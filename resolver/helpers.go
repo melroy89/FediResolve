@@ -14,6 +14,12 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+// Define common constants
+const (
+	// UserAgent is the user agent string used for all HTTP requests
+	UserAgent = "FediResolve/1.0 (https://melroy.org)"
+)
+
 // fetchActivityPubObjectWithSignature is a helper function that always signs HTTP requests
 // This is the preferred way to fetch ActivityPub content as many instances require signatures
 func (r *Resolver) fetchActivityPubObjectWithSignature(objectURL string) (string, error) {
@@ -59,7 +65,7 @@ func (r *Resolver) fetchActivityPubObjectWithSignature(objectURL string) (string
 	
 	// Set headers
 	req.Header.Set("Accept", "application/activity+json, application/ld+json; profile=\"https://www.w3.org/ns/activitystreams\", application/json")
-	req.Header.Set("User-Agent", "FediResolve/1.0 (https://github.com/dennis/fediresolve)")
+	req.Header.Set("User-Agent", UserAgent)
 	req.Header.Set("Date", time.Now().UTC().Format(http.TimeFormat))
 	
 	// Sign the request
@@ -135,7 +141,7 @@ func (r *Resolver) fetchActivityPubObjectDirect(objectURL string) (string, error
 
 	// Set Accept headers to request ActivityPub data
 	req.Header.Set("Accept", "application/activity+json, application/ld+json; profile=\"https://www.w3.org/ns/activitystreams\", application/json")
-	req.Header.Set("User-Agent", "FediResolve/1.0 (https://github.com/dennis/fediresolve)")
+	req.Header.Set("User-Agent", UserAgent)
 
 	// Perform the request
 	fmt.Printf("Sending direct request with headers: %v\n", req.Header)
@@ -225,7 +231,7 @@ func (r *Resolver) fetchWithSignature(objectURL string) (string, error) {
 	
 	// Set headers
 	req.Header.Set("Accept", "application/activity+json, application/ld+json; profile=\"https://www.w3.org/ns/activitystreams\", application/json")
-	req.Header.Set("User-Agent", "FediResolve/1.0 (https://github.com/dennis/fediresolve)")
+	req.Header.Set("User-Agent", UserAgent)
 	req.Header.Set("Date", time.Now().UTC().Format(http.TimeFormat))
 	
 	// Sign the request
@@ -352,7 +358,7 @@ func (r *Resolver) fetchActorData(actorURL string) (map[string]interface{}, erro
 	
 	// Set headers
 	req.Header.Set("Accept", "application/activity+json, application/ld+json; profile=\"https://www.w3.org/ns/activitystreams\", application/json")
-	req.Header.Set("User-Agent", "FediResolve/1.0 (https://github.com/dennis/fediresolve)")
+	req.Header.Set("User-Agent", UserAgent)
 	
 	// Send the request
 	resp, err := r.client.Do(req)
@@ -457,7 +463,7 @@ func (r *Resolver) resolveActorViaWebFinger(username, domain string) (string, er
 	
 	// Set headers
 	req.Header.Set("Accept", "application/jrd+json, application/json")
-	req.Header.Set("User-Agent", "FediResolve/1.0 (https://github.com/dennis/fediresolve)")
+	req.Header.Set("User-Agent", UserAgent)
 	
 	// Send the request
 	resp, err := r.client.Do(req)

@@ -26,7 +26,7 @@ func (r *Resolver) checkForRedirect(inputURL string) (string, error) {
 		}
 
 		// Set standard browser-like headers
-		req.Header.Set("User-Agent", "FediResolve/1.0 (https://github.com/dennis/fediresolve)")
+		req.Header.Set("User-Agent", UserAgent)
 		req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml")
 
 		// Perform the request

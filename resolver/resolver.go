@@ -104,7 +104,7 @@ func (r *Resolver) resolveHandle(handle string) (string, error) {
 	
 	// Set appropriate headers for WebFinger
 	req.Header.Set("Accept", "application/jrd+json, application/json")
-	req.Header.Set("User-Agent", "FediResolve/1.0 (https://github.com/dennis/fediresolve)")
+	req.Header.Set("User-Agent", UserAgent)
 	
 	// Fetch WebFinger data
 	resp, err := r.client.Do(req)

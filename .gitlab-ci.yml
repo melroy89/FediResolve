@@ -1,8 +1,20 @@
-image: golang:latest
+default:
+  image: golang:1.24
+
+  cache:
+    key:
+      files:
+        - go.mod
+    paths:
+      - .go/pkg/mod/
+
+variables:
+  GOPATH: $CI_PROJECT_DIR/.go
 
 stages:
   - test
   - build
+  - release
 
 format:
   stage: test
@@ -10,11 +22,38 @@ format:
     - go fmt $(go list ./... | grep -v /vendor/)
     - go vet $(go list ./... | grep -v /vendor/)
 
+go-mod-tidy:
+  stage: test
+  script:
+    - go mod tidy -diff
+
 build:
   stage: build
   script:
     - go build
+    - echo "ARTIFACT_URL=${CI_PROJECT_URL}/-/jobs/${CI_JOB_ID}/artifacts/file/fediresolve" >> variables.env
   artifacts:
     paths:
       - fediresolve
+    reports:
+      dotenv: variables.env
     expire_in: 1 week
+
+release:
+  stage: release
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  needs:
+  - job: build
+    artifacts: true
+  rules:
+    - if: $CI_COMMIT_TAG
+  script:
+    - echo "running release_job for $CI_COMMIT_TAG"
+  release:
+    name: "Release $CI_COMMIT_TAG"
+    tag_name: $CI_COMMIT_TAG
+    assets:
+      links:
+        - name: 'FediResolve'
+          url: ${ARTIFACT_URL}
+          filepath: '/assets/fediresolve'

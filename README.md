@@ -4,8 +4,6 @@ FediResolve is a command-line tool for resolving and displaying Fediverse conten
 
 It can parse and display ActivityPub content from various Fediverse platforms including Mastodon, Mbin, Lemmy, PeerTube, and others. For easy reading or debugging purposes.
 
-~ Vibe coded within 2 hours.
-
 ## Features
 
 - Resolve Fediverse URLs to their ActivityPub representation

@@ -1,6 +1,7 @@
 module gitlab.melroy.org/melroy/fediresolve
 
 go 1.21
+toolchain go1.24.1
 
 require (
 	github.com/JohannesKaufmann/html-to-markdown v1.6.0
@@ -30,8 +31,8 @@ require (
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
-	golang.org/x/crypto v0.23.0 // indirect
+	golang.org/x/crypto v0.36.0 // indirect
 	golang.org/x/image v0.15.0 // indirect
-	golang.org/x/net v0.25.0 // indirect
-	golang.org/x/sys v0.20.0 // indirect
+	golang.org/x/net v0.38.0 // indirect
+	golang.org/x/sys v0.31.0 // indirect
 )

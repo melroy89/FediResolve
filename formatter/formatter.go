@@ -105,6 +105,12 @@ func formatActor(jsonStr string, parts []string, bold, cyan, green, red, yellow 
 		parts = append(parts, fmt.Sprintf("%s: %s", bold("Following"), green(following)))
 	}
 
+	// Add avatar (icon) link if present
+	iconUrl := gjson.Get(jsonStr, "icon.url").String()
+	if iconUrl != "" {
+		parts = append(parts, fmt.Sprintf("%s: %s", bold("Avatar"), green(iconUrl)))
+	}
+
 	return parts
 }
 

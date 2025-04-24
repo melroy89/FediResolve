@@ -1,6 +1,7 @@
 package resolver
 
 import (
+	"crypto/rand"
 	"crypto/rsa"
 	"encoding/json"
 	"fmt"
@@ -415,7 +416,7 @@ func (r *Resolver) extractPublicKey(actorData map[string]interface{}) (string, s
 func generateRSAKey() (*rsa.PrivateKey, error) {
 	// In a real app, we would use a persistent key, but for this demo, we'll generate a new one
 	// For server-to-server communication, this is not ideal but works for demonstration purposes
-	return rsa.GenerateKey(strings.NewReader("fediresolve-demo-random-source"), 2048)
+	return rsa.GenerateKey(rand.Reader, 2048)
 }
 
 // signRequest signs an HTTP request using HTTP Signatures

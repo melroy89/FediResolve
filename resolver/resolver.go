@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"regexp"
 	"strings"
 	"time"
 )
@@ -292,13 +291,4 @@ func (r *Resolver) fetchActivityPubObject(objectURL string) (string, error) {
 
 	// Use our signature-first approach by default
 	return r.fetchActivityPubObjectWithSignature(objectURL)
-}
-
-// isBareDomain returns true if input is a domain or domain/ (no scheme, no @, no path beyond optional trailing slash, allows port)
-var bareDomainRe = regexp.MustCompile(`^[a-zA-Z0-9.-]+(:[0-9]+)?/?$`)
-func isBareDomain(input string) bool {
-	if strings.Contains(input, "@") || strings.Contains(input, "://") {
-		return false
-	}
-	return bareDomainRe.MatchString(input)
 }

@@ -64,7 +64,7 @@ go build
 ### Resolving a user profile
 
 ```bash
-./fediresolve @melroy@melroy.org
+./fediresolve @melroy@mastodon.melroy.org
 ```
 
 ## How it works

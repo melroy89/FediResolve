@@ -1,6 +1,6 @@
 # FediResolve
 
-FediResolve is a command-line tool for resolving and displaying Fediverse content. It can parse and display ActivityPub content from various Fediverse platforms including Mastodon, Lemmy, PeerTube, and others.
+FediResolve is a command-line tool for resolving and displaying Fediverse content. It can parse and display ActivityPub content from various Fediverse platforms including Mastodon, Mbin, Lemmy, PeerTube, and others.
 
 ## Features
 

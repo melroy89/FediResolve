@@ -506,3 +506,95 @@ func (r *Resolver) resolveActorViaWebFinger(username, domain string) (string, er
 
 	return actorURL, nil
 }
+
+// fetchNodeInfo fetches nodeinfo from the given domain, returning the raw JSON and parsed data
+func (r *Resolver) fetchNodeInfo(domain string) ([]byte, map[string]interface{}, error) {
+	nodeinfoURL := "https://" + domain + "/.well-known/nodeinfo"
+	fmt.Printf("Fetching nodeinfo discovery from: %s\n", nodeinfoURL)
+
+	resp, err := r.client.Get(nodeinfoURL)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error fetching nodeinfo discovery: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, nil, fmt.Errorf("nodeinfo discovery failed with status: %s", resp.Status)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error reading nodeinfo discovery: %v", err)
+	}
+	var discovery struct {
+		Links []struct {
+			Rel  string `json:"rel"`
+			Href string `json:"href"`
+		} `json:"links"`
+	}
+	if err := json.Unmarshal(body, &discovery); err != nil {
+		return nil, nil, fmt.Errorf("error parsing nodeinfo discovery: %v", err)
+	}
+	var nodeinfoHref string
+	for _, link := range discovery.Links {
+		if strings.HasSuffix(link.Rel, "/schema/2.1") {
+			nodeinfoHref = link.Href
+			break
+		}
+	}
+	if nodeinfoHref == "" {
+		for _, link := range discovery.Links {
+			if strings.HasSuffix(link.Rel, "/schema/2.0") {
+				nodeinfoHref = link.Href
+				break
+			}
+		}
+	}
+	if nodeinfoHref == "" {
+		return nil, nil, fmt.Errorf("no nodeinfo schema 2.1 or 2.0 found")
+	}
+	fmt.Printf("Fetching nodeinfo from: %s\n", nodeinfoHref)
+	resp2, err := r.client.Get(nodeinfoHref)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error fetching nodeinfo: %v", err)
+	}
+	defer resp2.Body.Close()
+	if resp2.StatusCode != http.StatusOK {
+		return nil, nil, fmt.Errorf("nodeinfo fetch failed with status: %s", resp2.Status)
+	}
+	raw, err := io.ReadAll(resp2.Body)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error reading nodeinfo: %v", err)
+	}
+	var nodeinfo map[string]interface{}
+	if err := json.Unmarshal(raw, &nodeinfo); err != nil {
+		return nil, nil, fmt.Errorf("error parsing nodeinfo: %v", err)
+	}
+	return raw, nodeinfo, nil
+}
+
+// Try to extract actor, else try nodeinfo fallback for top-level domains
+func (r *Resolver) ResolveObjectOrNodeInfo(objectURL string) ([]byte, map[string]interface{}, string, error) {
+	actorURL, err := r.extractActorURLFromObjectURL(objectURL)
+	if err == nil && actorURL != "" {
+		actorData, err := r.fetchActorData(actorURL)
+		if err == nil && actorData != nil {
+			jsonData, _ := json.MarshalIndent(actorData, "", "  ")
+			return jsonData, actorData, "actor", nil
+		}
+	}
+	// If actor resolution fails, try nodeinfo
+	parts := strings.Split(objectURL, "/")
+	if len(parts) < 3 {
+		return nil, nil, "", fmt.Errorf("invalid object URL: %s", objectURL)
+	}
+	domain := parts[2]
+	raw, nodeinfo, err := r.fetchNodeInfo(domain)
+	if err != nil {
+		return nil, nil, "", fmt.Errorf("could not fetch nodeinfo: %v", err)
+	}
+	return raw, nodeinfo, "nodeinfo", nil
+}
+
+// FormatHelperResult wraps formatter.Format for use by resolver.go, keeping formatter import out of resolver.go
+func FormatHelperResult(raw []byte, nodeinfo map[string]interface{}) (string, error) {
+	return formatter.Format(nodeinfo)
+}

@@ -31,8 +31,13 @@ func Format(data map[string]interface{}) (string, error) {
 	return result, nil
 }
 
-// createSummary generates a human-readable summary of the ActivityPub object
+// createSummary generates a human-readable summary of the ActivityPub object or nodeinfo
 func createSummary(jsonStr string) string {
+	// Try to detect nodeinfo
+	if gjson.Get(jsonStr, "software.name").Exists() && gjson.Get(jsonStr, "version").Exists() {
+		return nodeInfoSummary(jsonStr)
+	}
+
 	objectType := gjson.Get(jsonStr, "type").String()
 
 	// Build a header with the object type
@@ -72,6 +77,49 @@ func createSummary(jsonStr string) string {
 	}
 
 	return strings.Join(summaryParts, "\n")
+}
+
+// nodeInfoSummary generates a summary for nodeinfo objects
+func nodeInfoSummary(jsonStr string) string {
+	bold := color.New(color.Bold).SprintFunc()
+	cyan := color.New(color.FgCyan).SprintFunc()
+	green := color.New(color.FgGreen).SprintFunc()
+	yellow := color.New(color.FgYellow).SprintFunc()
+
+	parts := []string{}
+	parts = append(parts, fmt.Sprintf("%s: %s", bold("NodeInfo Version"), cyan(gjson.Get(jsonStr, "version").String())))
+	parts = append(parts, fmt.Sprintf("%s: %s %s", bold("Software"), green(gjson.Get(jsonStr, "software.name").String()), yellow(gjson.Get(jsonStr, "software.version").String())))
+	if repo := gjson.Get(jsonStr, "software.repository").String(); repo != "" {
+		parts = append(parts, fmt.Sprintf("%s: %s", bold("Repository"), repo))
+	}
+	if protocols := gjson.Get(jsonStr, "protocols").Array(); len(protocols) > 0 {
+		var plist []string
+		for _, p := range protocols {
+			plist = append(plist, p.String())
+		}
+		parts = append(parts, fmt.Sprintf("%s: %s", bold("Protocols"), strings.Join(plist, ", ")))
+	}
+	if users := gjson.Get(jsonStr, "usage.users.total").Int(); users > 0 {
+		activeMonth := gjson.Get(jsonStr, "usage.users.activeMonth").Int()
+		activeHalfyear := gjson.Get(jsonStr, "usage.users.activeHalfyear").Int()
+		parts = append(parts, fmt.Sprintf("%s: %d (active month: %d, halfyear: %d)", bold("Users"), users, activeMonth, activeHalfyear))
+	}
+	if posts := gjson.Get(jsonStr, "usage.localPosts").Int(); posts > 0 {
+		parts = append(parts, fmt.Sprintf("%s: %d", bold("Local Posts"), posts))
+	}
+	if comments := gjson.Get(jsonStr, "usage.localComments").Int(); comments > 0 {
+		parts = append(parts, fmt.Sprintf("%s: %d", bold("Local Comments"), comments))
+	}
+	if open := gjson.Get(jsonStr, "openRegistrations").Exists(); open {
+		parts = append(parts, fmt.Sprintf("%s: %v", bold("Open Registrations"), gjson.Get(jsonStr, "openRegistrations").Bool()))
+	}
+	if nodeName := gjson.Get(jsonStr, "metadata.nodeName").String(); nodeName != "" {
+		parts = append(parts, fmt.Sprintf("%s: %s", bold("Node Name"), cyan(nodeName)))
+	}
+	if nodeDesc := gjson.Get(jsonStr, "metadata.nodeDescription").String(); nodeDesc != "" {
+		parts = append(parts, fmt.Sprintf("%s:\n%s", bold("Node Description"), nodeDesc))
+	}
+	return strings.Join(parts, "\n")
 }
 
 // formatActor formats actor-type objects (Person, Service, etc.)

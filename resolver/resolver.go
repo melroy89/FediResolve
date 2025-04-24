@@ -35,6 +35,20 @@ func (r *Resolver) Resolve(input string) (string, error) {
 	// Check if input looks like a URL
 	if strings.HasPrefix(input, "http://") || strings.HasPrefix(input, "https://") {
 		fmt.Println("Detected URL, attempting direct resolution")
+		// Special case: if input is just a root domain (no path or only "/"), use nodeinfo fallback
+		parsedURL, err := url.Parse(input)
+		if err == nil && (parsedURL.Path == "" || parsedURL.Path == "/") {
+			raw, nodeinfo, _, err := r.ResolveObjectOrNodeInfo(input)
+			if err != nil {
+				return "", err
+			}
+			// Format using the formatter (in helpers.go)
+			formatted, ferr := FormatHelperResult(raw, nodeinfo)
+			if ferr != nil {
+				return string(raw), nil
+			}
+			return formatted, nil
+		}
 		return r.resolveURL(input)
 	}
 

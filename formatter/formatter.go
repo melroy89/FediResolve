@@ -113,7 +113,7 @@ func formatActor(jsonStr string, parts []string, bold, cyan, green, red, yellow 
 	return parts
 }
 
-// formatContent formats content-type objects (Note, Article, etc.)
+// formatContent formats content-type objects (Note, Article, Page, etc.)
 func formatContent(jsonStr string, parts []string, bold, green, yellow func(a ...interface{}) string) []string {
 	if content := gjson.Get(jsonStr, "content").String(); content != "" {
 		md := htmlToMarkdown(content)

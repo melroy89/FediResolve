@@ -49,6 +49,11 @@ func createSummary(jsonStr string) string {
 
 	header := fmt.Sprintf("%s: %s\n", bold("Type"), cyan(objectType))
 
+	// Add sensitive content warning if present
+	if gjson.Get(jsonStr, "sensitive").Bool() {
+		header += fmt.Sprintf("%s: %s\n", red(bold("WARNING")), red("Sensitive Content!"))
+	}
+
 	// Add common fields
 	var summaryParts []string
 	summaryParts = append(summaryParts, header)

@@ -56,17 +56,17 @@ func createSummary(jsonStr string) string {
 	case "Person", "Application", "Group", "Organization", "Service":
 		summaryParts = formatActor(jsonStr, summaryParts, bold, cyan, green, red, yellow)
 	case "Note", "Article", "Page", "Question":
-		summaryParts = formatContent(jsonStr, summaryParts, bold, green)
+		summaryParts = formatContent(jsonStr, summaryParts, bold, green, yellow)
 	case "Create", "Update", "Delete", "Follow", "Add", "Remove", "Like", "Block", "Announce":
 		summaryParts = formatActivity(jsonStr, summaryParts, bold, green, yellow)
 	case "Collection", "OrderedCollection", "CollectionPage", "OrderedCollectionPage":
-		summaryParts = formatCollection(jsonStr, summaryParts, bold, green)
+		summaryParts = formatCollection(jsonStr, summaryParts, bold, green, yellow)
 	case "Image", "Audio", "Video", "Document":
-		summaryParts = formatMedia(jsonStr, summaryParts, bold, green)
+		summaryParts = formatMedia(jsonStr, summaryParts, bold, green, yellow)
 	case "Event":
-		summaryParts = formatEvent(jsonStr, summaryParts, bold, green)
+		summaryParts = formatEvent(jsonStr, summaryParts, bold, green, yellow)
 	case "Tombstone":
-		summaryParts = formatTombstone(jsonStr, summaryParts, bold, green)
+		summaryParts = formatTombstone(jsonStr, summaryParts, bold, green, yellow)
 	}
 
 	return strings.Join(summaryParts, "\n")
@@ -106,7 +106,7 @@ func formatActor(jsonStr string, parts []string, bold, cyan, green, red, yellow 
 }
 
 // formatContent formats content-type objects (Note, Article, etc.)
-func formatContent(jsonStr string, parts []string, bold, green func(a ...interface{}) string) []string {
+func formatContent(jsonStr string, parts []string, bold, green, yellow func(a ...interface{}) string) []string {
 	if content := gjson.Get(jsonStr, "content").String(); content != "" {
 		// Strip HTML tags for display
 		content = stripHTML(content)
@@ -141,38 +141,38 @@ func formatContent(jsonStr string, parts []string, bold, green func(a ...interfa
 			parts = append(parts, attachmentInfo)
 
 			if url != "" {
-				parts = append(parts, fmt.Sprintf("     URL: %s", url))
+				parts = append(parts, fmt.Sprintf("     URL: %s", green(url)))
 			}
 		}
 	}
 
 	if published := gjson.Get(jsonStr, "published").String(); published != "" {
-		parts = append(parts, fmt.Sprintf("%s: %s", bold("Published"), formatDate(published)))
+		parts = append(parts, fmt.Sprintf("%s: %s", bold("Published"), yellow(formatDate(published))))
 	}
 
 	if updated := gjson.Get(jsonStr, "updated").String(); updated != "" {
-		parts = append(parts, fmt.Sprintf("%s: %s", bold("Updated"), formatDate(updated)))
+		parts = append(parts, fmt.Sprintf("%s: %s", bold("Updated"), yellow(formatDate(updated))))
 	}
 
 	if attributedTo := gjson.Get(jsonStr, "attributedTo").String(); attributedTo != "" {
-		parts = append(parts, fmt.Sprintf("%s: %s", bold("Author"), attributedTo))
+		parts = append(parts, fmt.Sprintf("%s: %s", bold("Author"), green(attributedTo)))
 	}
 
 	if to := gjson.Get(jsonStr, "to").Array(); len(to) > 0 {
-		parts = append(parts, fmt.Sprintf("%s: %s", bold("To"), formatArray(to)))
+		parts = append(parts, fmt.Sprintf("%s: %s", bold("To"), green(formatArray(to))))
 	}
 
 	if cc := gjson.Get(jsonStr, "cc").Array(); len(cc) > 0 {
-		parts = append(parts, fmt.Sprintf("%s: %s", bold("CC"), formatArray(cc)))
+		parts = append(parts, fmt.Sprintf("%s: %s", bold("CC"), green(formatArray(cc))))
 	}
 
 	if inReplyTo := gjson.Get(jsonStr, "inReplyTo").String(); inReplyTo != "" {
-		parts = append(parts, fmt.Sprintf("%s: %s", bold("In Reply To"), inReplyTo))
+		parts = append(parts, fmt.Sprintf("%s: %s", bold("In Reply To"), green(inReplyTo)))
 	}
 
 	// Include endTime for Question type
 	if endTime := gjson.Get(jsonStr, "endTime").String(); endTime != "" {
-		parts = append(parts, fmt.Sprintf("%s: %s", bold("End Time"), formatDate(endTime)))
+		parts = append(parts, fmt.Sprintf("%s: %s", bold("End Time"), yellow(formatDate(endTime))))
 	}
 
 	// Include options (oneOf/anyOf) for Question type
@@ -243,7 +243,7 @@ func formatActivity(jsonStr string, parts []string, bold, green, yellow func(a .
 	}
 
 	if published := gjson.Get(jsonStr, "published").String(); published != "" {
-		parts = append(parts, fmt.Sprintf("%s: %s", bold("Published"), formatDate(published)))
+		parts = append(parts, fmt.Sprintf("%s: %s", bold("Published"), yellow(formatDate(published))))
 	}
 
 	if target := gjson.Get(jsonStr, "target").String(); target != "" {
@@ -254,7 +254,7 @@ func formatActivity(jsonStr string, parts []string, bold, green, yellow func(a .
 }
 
 // formatCollection formats collection-type objects
-func formatCollection(jsonStr string, parts []string, bold, green func(a ...interface{}) string) []string {
+func formatCollection(jsonStr string, parts []string, bold, green, yellow func(a ...interface{}) string) []string {
 	if totalItems := gjson.Get(jsonStr, "totalItems").Int(); totalItems > 0 {
 		parts = append(parts, fmt.Sprintf("%s: %d", bold("Total Items"), totalItems))
 	}
@@ -285,17 +285,21 @@ func formatCollection(jsonStr string, parts []string, bold, green func(a ...inte
 		}
 	}
 
+	if published := gjson.Get(jsonStr, "published").String(); published != "" {
+		parts = append(parts, fmt.Sprintf("%s: %s", bold("Published"), yellow(formatDate(published))))
+	}
+
 	return parts
 }
 
 // formatMedia formats media-type objects (Image, Video, etc.)
-func formatMedia(jsonStr string, parts []string, bold, green func(a ...interface{}) string) []string {
+func formatMedia(jsonStr string, parts []string, bold, green, yellow func(a ...interface{}) string) []string {
 	if name := gjson.Get(jsonStr, "name").String(); name != "" {
 		parts = append(parts, fmt.Sprintf("%s: %s", bold("Name"), name))
 	}
 
 	if url := gjson.Get(jsonStr, "url").String(); url != "" {
-		parts = append(parts, fmt.Sprintf("%s: %s", bold("URL"), url))
+		parts = append(parts, fmt.Sprintf("%s: %s", bold("URL"), green(url)))
 	}
 
 	if duration := gjson.Get(jsonStr, "duration").String(); duration != "" {
@@ -303,7 +307,7 @@ func formatMedia(jsonStr string, parts []string, bold, green func(a ...interface
 	}
 
 	if published := gjson.Get(jsonStr, "published").String(); published != "" {
-		parts = append(parts, fmt.Sprintf("%s: %s", bold("Published"), formatDate(published)))
+		parts = append(parts, fmt.Sprintf("%s: %s", bold("Published"), yellow(formatDate(published))))
 	}
 
 	if attributedTo := gjson.Get(jsonStr, "attributedTo").String(); attributedTo != "" {
@@ -314,7 +318,7 @@ func formatMedia(jsonStr string, parts []string, bold, green func(a ...interface
 }
 
 // formatEvent formats event-type objects
-func formatEvent(jsonStr string, parts []string, bold, green func(a ...interface{}) string) []string {
+func formatEvent(jsonStr string, parts []string, bold, green, yellow func(a ...interface{}) string) []string {
 	if name := gjson.Get(jsonStr, "name").String(); name != "" {
 		parts = append(parts, fmt.Sprintf("%s: %s", bold("Name"), name))
 	}
@@ -328,11 +332,11 @@ func formatEvent(jsonStr string, parts []string, bold, green func(a ...interface
 	}
 
 	if startTime := gjson.Get(jsonStr, "startTime").String(); startTime != "" {
-		parts = append(parts, fmt.Sprintf("%s: %s", bold("Start Time"), formatDate(startTime)))
+		parts = append(parts, fmt.Sprintf("%s: %s", bold("Start Time"), yellow(formatDate(startTime))))
 	}
 
 	if endTime := gjson.Get(jsonStr, "endTime").String(); endTime != "" {
-		parts = append(parts, fmt.Sprintf("%s: %s", bold("End Time"), formatDate(endTime)))
+		parts = append(parts, fmt.Sprintf("%s: %s", bold("End Time"), yellow(formatDate(endTime))))
 	}
 
 	if location := gjson.Get(jsonStr, "location").String(); location != "" {
@@ -343,13 +347,13 @@ func formatEvent(jsonStr string, parts []string, bold, green func(a ...interface
 }
 
 // formatTombstone formats tombstone-type objects
-func formatTombstone(jsonStr string, parts []string, bold, green func(a ...interface{}) string) []string {
+func formatTombstone(jsonStr string, parts []string, bold, green, yellow func(a ...interface{}) string) []string {
 	if formerType := gjson.Get(jsonStr, "formerType").String(); formerType != "" {
 		parts = append(parts, fmt.Sprintf("%s: %s", bold("Former Type"), formerType))
 	}
 
 	if deleted := gjson.Get(jsonStr, "deleted").String(); deleted != "" {
-		parts = append(parts, fmt.Sprintf("%s: %s", bold("Deleted"), formatDate(deleted)))
+		parts = append(parts, fmt.Sprintf("%s: %s", bold("Deleted"), yellow(formatDate(deleted))))
 	}
 
 	return parts

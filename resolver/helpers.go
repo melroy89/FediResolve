@@ -24,31 +24,31 @@ const (
 
 // fetchActivityPubObjectWithSignature is a helper function that always signs HTTP requests
 // This is the preferred way to fetch ActivityPub content as many instances require signatures
-func (r *Resolver) fetchActivityPubObjectWithSignature(objectURL string) ([]byte, map[string]interface{}, error) {
+func (r *Resolver) fetchActivityPubObjectWithSignature(objectURL string) ([]byte, error) {
 	fmt.Printf("Fetching ActivityPub object with HTTP signatures from: %s\n", objectURL)
 
 	// Fetch the object itself
-	_, data, err := r.fetchActivityPubObjectDirect(objectURL)
+	data, err := r.fetchActivityPubObjectDirect(objectURL)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	// Extract the public key ID
 	keyID, err := r.extractPublicKey(data)
 	if err != nil {
-		return nil, nil, fmt.Errorf("could not extract public key: %v", err)
+		return nil, fmt.Errorf("could not extract public key: %v", err)
 	}
 
 	// Create a new private key for signing (in a real app, we would use a persistent key)
 	privateKey, err := generateRSAKey()
 	if err != nil {
-		return nil, nil, fmt.Errorf("could not generate RSA key: %v", err)
+		return nil, fmt.Errorf("could not generate RSA key: %v", err)
 	}
 
 	// Now, sign and send the request
 	req, err := http.NewRequest("GET", objectURL, nil)
 	if err != nil {
-		return nil, nil, fmt.Errorf("error creating signed request: %v", err)
+		return nil, fmt.Errorf("error creating signed request: %v", err)
 	}
 
 	// Set headers
@@ -58,42 +58,36 @@ func (r *Resolver) fetchActivityPubObjectWithSignature(objectURL string) ([]byte
 
 	// Sign the request
 	if err := signRequest(req, keyID, privateKey); err != nil {
-		return nil, nil, fmt.Errorf("could not sign request: %v", err)
+		return nil, fmt.Errorf("could not sign request: %v", err)
 	}
 
 	// Send the request
 	fmt.Printf("Sending signed request with headers: %v\n", req.Header)
 	resp, err := r.client.Do(req)
 	if err != nil {
-		return nil, nil, fmt.Errorf("error sending signed request: %v", err)
+		return nil, fmt.Errorf("error sending signed request: %v", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, nil, fmt.Errorf("signed request failed with status: %s, body: %s", resp.Status, string(body))
+		return nil, fmt.Errorf("signed request failed with status: %s, body: %s", resp.Status, string(body))
 	}
 
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, nil, fmt.Errorf("error reading response: %v", err)
+		return nil, fmt.Errorf("error reading response: %v", err)
 	}
 	if len(bodyBytes) == 0 {
-		return nil, nil, fmt.Errorf("received empty response body")
+		return nil, fmt.Errorf("received empty response body")
 	}
 
-	// Try to decode the JSON response
-	var body map[string]interface{}
-	if err := json.Unmarshal(bodyBytes, &body); err != nil {
-		return nil, nil, fmt.Errorf("error decoding signed response: %v", err)
-	}
-
-	return bodyBytes, body, nil
+	return bodyBytes, nil
 }
 
 // fetchActivityPubObjectDirect is a helper function to fetch content without signatures
 // This is used as a fallback when signing fails
-func (r *Resolver) fetchActivityPubObjectDirect(objectURL string) ([]byte, map[string]interface{}, error) {
+func (r *Resolver) fetchActivityPubObjectDirect(objectURL string) ([]byte, error) {
 	fmt.Printf("Fetching ActivityPub object directly from: %s\n", objectURL)
 
 	// Create a custom client that doesn't follow redirects automatically
@@ -107,7 +101,7 @@ func (r *Resolver) fetchActivityPubObjectDirect(objectURL string) ([]byte, map[s
 	// Create the request
 	req, err := http.NewRequest("GET", objectURL, nil)
 	if err != nil {
-		return nil, nil, fmt.Errorf("error creating request: %v", err)
+		return nil, fmt.Errorf("error creating request: %v", err)
 	}
 
 	// Set Accept headers to request ActivityPub data
@@ -118,7 +112,7 @@ func (r *Resolver) fetchActivityPubObjectDirect(objectURL string) ([]byte, map[s
 	fmt.Printf("Sending direct request with headers: %v\n", req.Header)
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, nil, fmt.Errorf("error fetching content: %v", err)
+		return nil, fmt.Errorf("error fetching content: %v", err)
 	}
 	defer resp.Body.Close()
 
@@ -139,13 +133,13 @@ func (r *Resolver) fetchActivityPubObjectDirect(objectURL string) ([]byte, map[s
 	if resp.StatusCode != http.StatusOK {
 		// Read body for error info
 		body, _ := io.ReadAll(resp.Body)
-		return nil, nil, fmt.Errorf("request failed with status: %s, body: %s", resp.Status, string(body))
+		return nil, fmt.Errorf("request failed with status: %s, body: %s", resp.Status, string(body))
 	}
 
 	// Read and parse the response
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, nil, fmt.Errorf("error reading response: %v", err)
+		return nil, fmt.Errorf("error reading response: %v", err)
 	}
 
 	// Debug output
@@ -153,26 +147,20 @@ func (r *Resolver) fetchActivityPubObjectDirect(objectURL string) ([]byte, map[s
 
 	// Check if the response is empty
 	if len(bodyBytes) == 0 {
-		return nil, nil, fmt.Errorf("received empty response body")
+		return nil, fmt.Errorf("received empty response body")
 	}
 
-	// Try to decode the JSON response
-	var body map[string]interface{}
-	if err := json.Unmarshal(bodyBytes, &body); err != nil {
-		return nil, nil, fmt.Errorf("error decoding response: %v", err)
-	}
-
-	return bodyBytes, body, nil
+	return bodyBytes, nil
 }
 
 // fetchActorData fetches actor data from an actor URL
-func (r *Resolver) fetchActorData(actorURL string) ([]byte, map[string]interface{}, error) {
+func (r *Resolver) fetchActorData(actorURL string) ([]byte, error) {
 	fmt.Printf("Fetching actor data from: %s\n", actorURL)
 
 	// Create the request
 	req, err := http.NewRequest("GET", actorURL, nil)
 	if err != nil {
-		return nil, nil, fmt.Errorf("error creating request: %v", err)
+		return nil, fmt.Errorf("error creating request: %v", err)
 	}
 
 	// Set headers
@@ -182,66 +170,48 @@ func (r *Resolver) fetchActorData(actorURL string) ([]byte, map[string]interface
 	// Send the request
 	resp, err := r.client.Do(req)
 	if err != nil {
-		return nil, nil, fmt.Errorf("error fetching actor data: %v", err)
+		return nil, fmt.Errorf("error fetching actor data: %v", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, nil, fmt.Errorf("actor request failed with status: %s", resp.Status)
+		return nil, fmt.Errorf("actor request failed with status: %s", resp.Status)
 	}
 
 	// Read and parse the response
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, nil, fmt.Errorf("error reading actor response: %v", err)
+		return nil, fmt.Errorf("error reading actor response: %v", err)
 	}
 
-	// Parse JSON
-	var data map[string]interface{}
-	if err := json.Unmarshal(bodyBytes, &data); err != nil {
-		return nil, nil, fmt.Errorf("error parsing actor data: %v", err)
-	}
-
-	return bodyBytes, data, nil
+	return bodyBytes, nil
 }
 
 // extractPublicKey extracts the public key ID from actor data
-func (r *Resolver) extractPublicKey(data map[string]interface{}) (string, error) {
-	// Convert to JSON string for easier parsing with gjson
-	dataJSON, err := json.Marshal(data)
-	if err != nil {
-		return "", fmt.Errorf("error marshaling actor data: %v", err)
-	}
-
-	// Try to find the attributedTo URL using dataJSON
-	actorURL := gjson.GetBytes(dataJSON, "attributedTo").String()
+func (r *Resolver) extractPublicKey(data []byte) (string, error) {
+	// Try to find the attributedTo URL
+	actorURL := gjson.GetBytes(data, "attributedTo").String()
 
 	if actorURL == "" {
 		fmt.Printf("Could not find attributedTo in object\n")
 		// Try to find key in the object itself
-		keyID := gjson.GetBytes(dataJSON, "publicKey.id").String()
+		keyID := gjson.GetBytes(data, "publicKey.id").String()
 
 		if keyID == "" {
 			return "", fmt.Errorf("could not find public key ID in object")
 		}
 		return keyID, nil
 	} else {
-		_, actorData, err := r.fetchActorData(actorURL)
+		actorData, err := r.fetchActorData(actorURL)
 		if err != nil {
 			return "", fmt.Errorf("error fetching actor data: %v", err)
 		}
 
-		// Convert actorData to JSON
-		actorJSON, err := json.Marshal(actorData)
-		if err != nil {
-			return "", fmt.Errorf("error marshaling actor data: %v", err)
-		}
-
 		// Extract key ID
-		keyID := gjson.GetBytes(actorJSON, "publicKey.id").String()
+		keyID := gjson.GetBytes(actorData, "publicKey.id").String()
 		if keyID == "" {
 			// Try alternate formats
-			keyID = gjson.GetBytes(actorJSON, "publicKey.0.id").String()
+			keyID = gjson.GetBytes(actorData, "publicKey.0.id").String()
 		}
 		if keyID == "" {
 			fmt.Printf("could not find public key ID in actor data")
@@ -287,22 +257,22 @@ func signRequest(req *http.Request, keyID string, privateKey *rsa.PrivateKey) er
 	return signer.SignRequest(privateKey, keyID, req, nil)
 }
 
-// fetchNodeInfo fetches nodeinfo from the given domain, returning the raw JSON and parsed data
-func (r *Resolver) fetchNodeInfo(domain string) ([]byte, map[string]interface{}, error) {
+// fetchNodeInfo fetches nodeinfo from the given domain, returning the raw JSON
+func (r *Resolver) fetchNodeInfo(domain string) ([]byte, error) {
 	nodeinfoURL := "https://" + domain + "/.well-known/nodeinfo"
 	fmt.Printf("Fetching nodeinfo discovery from: %s\n", nodeinfoURL)
 
 	resp, err := r.client.Get(nodeinfoURL)
 	if err != nil {
-		return nil, nil, fmt.Errorf("error fetching nodeinfo discovery: %v", err)
+		return nil, fmt.Errorf("error fetching nodeinfo discovery: %v", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, nil, fmt.Errorf("nodeinfo discovery failed with status: %s", resp.Status)
+		return nil, fmt.Errorf("nodeinfo discovery failed with status: %s", resp.Status)
 	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, nil, fmt.Errorf("error reading nodeinfo discovery: %v", err)
+		return nil, fmt.Errorf("error reading nodeinfo discovery: %v", err)
 	}
 	var discovery struct {
 		Links []struct {
@@ -311,7 +281,7 @@ func (r *Resolver) fetchNodeInfo(domain string) ([]byte, map[string]interface{},
 		} `json:"links"`
 	}
 	if err := json.Unmarshal(body, &discovery); err != nil {
-		return nil, nil, fmt.Errorf("error parsing nodeinfo discovery: %v", err)
+		return nil, fmt.Errorf("error parsing nodeinfo discovery: %v", err)
 	}
 	var nodeinfoHref string
 	for _, link := range discovery.Links {
@@ -329,53 +299,40 @@ func (r *Resolver) fetchNodeInfo(domain string) ([]byte, map[string]interface{},
 		}
 	}
 	if nodeinfoHref == "" {
-		return nil, nil, fmt.Errorf("no nodeinfo schema 2.1 or 2.0 found")
+		return nil, fmt.Errorf("no nodeinfo schema 2.1 or 2.0 found")
 	}
 	fmt.Printf("Fetching nodeinfo from: %s\n", nodeinfoHref)
 	resp2, err := r.client.Get(nodeinfoHref)
 	if err != nil {
-		return nil, nil, fmt.Errorf("error fetching nodeinfo: %v", err)
+		return nil, fmt.Errorf("error fetching nodeinfo: %v", err)
 	}
 	defer resp2.Body.Close()
 	if resp2.StatusCode != http.StatusOK {
-		return nil, nil, fmt.Errorf("nodeinfo fetch failed with status: %s", resp2.Status)
+		return nil, fmt.Errorf("nodeinfo fetch failed with status: %s", resp2.Status)
 	}
 	raw, err := io.ReadAll(resp2.Body)
 	if err != nil {
-		return nil, nil, fmt.Errorf("error reading nodeinfo: %v", err)
+		return nil, fmt.Errorf("error reading nodeinfo: %v", err)
 	}
-	var nodeinfo map[string]interface{}
-	if err := json.Unmarshal(raw, &nodeinfo); err != nil {
-		return nil, nil, fmt.Errorf("error parsing nodeinfo: %v", err)
-	}
-	return raw, nodeinfo, nil
+	return raw, nil
 }
 
 // Try to extract actor, else try nodeinfo fallback for top-level domains
-func (r *Resolver) ResolveObjectOrNodeInfo(objectURL string) ([]byte, map[string]interface{}, string, error) {
+func (r *Resolver) ResolveObjectOrNodeInfo(objectURL string) ([]byte, error) {
 	// If actor resolution fails, try nodeinfo
 	parts := strings.Split(objectURL, "/")
 	if len(parts) < 3 {
-		return nil, nil, "", fmt.Errorf("invalid object URL: %s", objectURL)
+		return nil, fmt.Errorf("invalid object URL: %s", objectURL)
 	}
 	domain := parts[2]
-	raw, nodeinfo, err := r.fetchNodeInfo(domain)
+	body, err := r.fetchNodeInfo(domain)
 	if err != nil {
-		return nil, nil, "", fmt.Errorf("could not fetch nodeinfo: %v", err)
+		return nil, fmt.Errorf("could not fetch nodeinfo: %v", err)
 	}
-	return raw, nodeinfo, "nodeinfo", nil
+	return body, nil
 }
 
-// FormatHelperResult wraps formatter.Format for use by resolver.go, keeping formatter import out of resolver.go
-func FormatHelperResult(raw []byte, nodeinfo map[string]interface{}) (string, error) {
-	return formatter.Format(nodeinfo)
-}
-
-// Try to always format (ideally the body data, or in the worse case the raw data to string)
-func formatResult(raw []byte, data map[string]interface{}) string {
-	formatted, err := formatter.Format(data)
-	if err != nil {
-		return string(raw)
-	}
-	return formatted
+// Format result
+func formatResult(raw []byte) (string, error) {
+	return formatter.Format(raw)
 }

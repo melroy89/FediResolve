@@ -1,7 +1,6 @@
 package formatter
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -13,13 +12,7 @@ import (
 )
 
 // Format takes ActivityPub data and returns a formatted string representation
-func Format(data map[string]interface{}) (string, error) {
-	// First, get the beautified JSON
-	jsonData, err := json.MarshalIndent(data, "", "  ")
-	if err != nil {
-		return "", fmt.Errorf("error formatting JSON: %v", err)
-	}
-
+func Format(jsonData []byte) (string, error) {
 	// Create a summary based on the object type
 	summary := createSummary(jsonData)
 

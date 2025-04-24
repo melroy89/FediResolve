@@ -41,11 +41,14 @@ func (r *Resolver) Resolve(input string) (string, error) {
 	parsedURL, err := url.Parse(inputNorm)
 	if err == nil && parsedURL.Host != "" && (parsedURL.Path == "" || parsedURL.Path == "/") && parsedURL.RawQuery == "" && parsedURL.Fragment == "" {
 		// Looks like a root domain (with or without scheme), fetch nodeinfo
-		raw, nodeinfo, _, err := r.ResolveObjectOrNodeInfo(parsedURL.String())
+		raw, err := r.ResolveObjectOrNodeInfo(parsedURL.String())
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("error fetching nodeinfo: %v", err)
 		}
-		formatted := formatResult(raw, nodeinfo)
+		formatted, err := formatResult(raw)
+		if err != nil {
+			return "", fmt.Errorf("error formatting nodeinfo: %v", err)
+		}
 		return formatted, nil
 	}
 
@@ -212,7 +215,10 @@ func (r *Resolver) resolveCanonicalActivityPub(objectURL string, depth int) (str
 		return r.resolveCanonicalActivityPub(idVal, depth+1)
 	}
 	// If no id or already canonical, format and return using helpers.go
-	formatted := formatResult(jsonData, data)
+	formatted, err := formatResult(jsonData)
+	if err != nil {
+		return "", fmt.Errorf("error formatting ActivityPub object: %v", err)
+	}
 	return formatted, nil
 }
 
@@ -263,10 +269,13 @@ func (r *Resolver) fetchActivityPubObject(objectURL string) (string, error) {
 	}
 
 	// Use our signature-first approach by default
-	raw, body, err := r.fetchActivityPubObjectWithSignature(objectURL)
+	raw, err := r.fetchActivityPubObjectWithSignature(objectURL)
 	if err != nil {
 		return "", fmt.Errorf("error fetching ActivityPub object: %v", err)
 	}
-	formatted := formatResult(raw, body)
+	formatted, err := formatResult(raw)
+	if err != nil {
+		return "", fmt.Errorf("error formatting ActivityPub object: %v", err)
+	}
 	return formatted, nil
 }

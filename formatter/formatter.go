@@ -50,7 +50,7 @@ func createSummary(jsonStr string) string {
 
 	// Add ID if available
 	if id := gjson.Get(jsonStr, "id").String(); id != "" {
-		summaryParts = append(summaryParts, fmt.Sprintf("%s: %s", bold("ID"), green(id)))
+		summaryParts = append(summaryParts, fmt.Sprintf("%s: %s", bold("Original URL"), green(id)))
 	}
 
 	// Process based on type

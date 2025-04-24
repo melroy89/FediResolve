@@ -66,7 +66,7 @@ func createSummary(jsonStr string) string {
 	case "Image", "Audio", "Video", "Document":
 		summaryParts = formatMedia(jsonStr, summaryParts, bold, green, yellow)
 	case "Event":
-		summaryParts = formatEvent(jsonStr, summaryParts, bold, green, yellow)
+		summaryParts = formatEvent(jsonStr, summaryParts, bold, yellow)
 	case "Tombstone":
 		summaryParts = formatTombstone(jsonStr, summaryParts, bold, green, yellow)
 	}
@@ -115,10 +115,16 @@ func formatActor(jsonStr string, parts []string, bold, cyan, green, red, yellow 
 
 // formatContent formats content-type objects (Note, Article, Page, etc.)
 func formatContent(jsonStr string, parts []string, bold, green, yellow func(a ...interface{}) string) []string {
+	// Show the name/title if present (especially for Page/thread)
+	if name := gjson.Get(jsonStr, "name").String(); name != "" {
+		parts = append(parts, fmt.Sprintf("%s: %s", bold("Title"), name))
+	}
+
 	if content := gjson.Get(jsonStr, "content").String(); content != "" {
 		md := htmlToMarkdown(content)
-		if len(md) > 300 {
-			md = md[:297] + "..."
+		// Truncate the content if its too big.
+		if len(md) > 1200 {
+			md = md[:1197] + "..."
 		}
 		parts = append(parts, fmt.Sprintf("%s:\n%s", bold("Content"), renderMarkdown(md)))
 	}
@@ -134,7 +140,7 @@ func formatContent(jsonStr string, parts []string, bold, green, yellow func(a ..
 			href := attachment.Get("href").String()
 			name := attachment.Get("name").String()
 
-			// Truncate long descriptions
+			// Truncate long names
 			if len(name) > 100 {
 				name = name[:97] + "..."
 			}
@@ -230,7 +236,7 @@ func formatActivity(jsonStr string, parts []string, bold, green, yellow func(a .
 				url := attachment.Get("url").String()
 				name := attachment.Get("name").String()
 
-				// Truncate long descriptions
+				// Truncate long names
 				if len(name) > 100 {
 					name = name[:97] + "..."
 				}
@@ -304,7 +310,7 @@ func formatCollection(jsonStr string, parts []string, bold, green, yellow func(a
 // formatMedia formats media-type objects (Image, Video, etc.)
 func formatMedia(jsonStr string, parts []string, bold, green, yellow func(a ...interface{}) string) []string {
 	if name := gjson.Get(jsonStr, "name").String(); name != "" {
-		parts = append(parts, fmt.Sprintf("%s: %s", bold("Name"), name))
+		parts = append(parts, fmt.Sprintf("%s: %s", bold("Title"), name))
 	}
 
 	if url := gjson.Get(jsonStr, "url").String(); url != "" {
@@ -327,9 +333,9 @@ func formatMedia(jsonStr string, parts []string, bold, green, yellow func(a ...i
 }
 
 // formatEvent formats event-type objects
-func formatEvent(jsonStr string, parts []string, bold, green, yellow func(a ...interface{}) string) []string {
+func formatEvent(jsonStr string, parts []string, bold, yellow func(a ...interface{}) string) []string {
 	if name := gjson.Get(jsonStr, "name").String(); name != "" {
-		parts = append(parts, fmt.Sprintf("%s: %s", bold("Name"), name))
+		parts = append(parts, fmt.Sprintf("%s: %s", bold("Title"), name))
 	}
 
 	if content := gjson.Get(jsonStr, "content").String(); content != "" {

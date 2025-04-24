@@ -115,6 +115,36 @@ func formatContent(jsonStr string, parts []string, bold, green func(a ...interfa
 		parts = append(parts, fmt.Sprintf("%s: %s", bold("Content"), content))
 	}
 	
+	// Check for attachments (images, videos, etc.)
+	attachments := gjson.Get(jsonStr, "attachment").Array()
+	if len(attachments) > 0 {
+		parts = append(parts, fmt.Sprintf("%s:", bold("Attachments")))
+		for i, attachment := range attachments {
+			attachmentType := attachment.Get("type").String()
+			mediaType := attachment.Get("mediaType").String()
+			url := attachment.Get("url").String()
+			name := attachment.Get("name").String()
+			
+			// Truncate long descriptions
+			if len(name) > 100 {
+				name = name[:97] + "..."
+			}
+			
+			attachmentInfo := fmt.Sprintf("  %d. %s", i+1, green(attachmentType))
+			if mediaType != "" {
+				attachmentInfo += fmt.Sprintf(" (%s)", mediaType)
+			}
+			if name != "" {
+				attachmentInfo += fmt.Sprintf(": %s", name)
+			}
+			parts = append(parts, attachmentInfo)
+			
+			if url != "" {
+				parts = append(parts, fmt.Sprintf("     URL: %s", url))
+			}
+		}
+	}
+	
 	if published := gjson.Get(jsonStr, "published").String(); published != "" {
 		parts = append(parts, fmt.Sprintf("%s: %s", bold("Published"), formatDate(published)))
 	}
@@ -127,12 +157,12 @@ func formatContent(jsonStr string, parts []string, bold, green func(a ...interfa
 		parts = append(parts, fmt.Sprintf("%s: %s", bold("Author"), attributedTo))
 	}
 	
-	if to := gjson.Get(jsonStr, "to").String(); to != "" {
-		parts = append(parts, fmt.Sprintf("%s: %s", bold("To"), to))
+	if to := gjson.Get(jsonStr, "to").Array(); len(to) > 0 {
+		parts = append(parts, fmt.Sprintf("%s: %s", bold("To"), formatArray(to)))
 	}
 	
-	if cc := gjson.Get(jsonStr, "cc").String(); cc != "" {
-		parts = append(parts, fmt.Sprintf("%s: %s", bold("CC"), cc))
+	if cc := gjson.Get(jsonStr, "cc").Array(); len(cc) > 0 {
+		parts = append(parts, fmt.Sprintf("%s: %s", bold("CC"), formatArray(cc)))
 	}
 	
 	if inReplyTo := gjson.Get(jsonStr, "inReplyTo").String(); inReplyTo != "" {
@@ -160,6 +190,36 @@ func formatActivity(jsonStr string, parts []string, bold, green, yellow func(a .
 				content = content[:297] + "..."
 			}
 			parts = append(parts, fmt.Sprintf("%s: %s", bold("Content"), content))
+		}
+		
+		// Check for attachments in the object
+		attachments := gjson.Get(jsonStr, "object.attachment").Array()
+		if len(attachments) > 0 {
+			parts = append(parts, fmt.Sprintf("%s:", bold("Attachments")))
+			for i, attachment := range attachments {
+				attachmentType := attachment.Get("type").String()
+				mediaType := attachment.Get("mediaType").String()
+				url := attachment.Get("url").String()
+				name := attachment.Get("name").String()
+				
+				// Truncate long descriptions
+				if len(name) > 100 {
+					name = name[:97] + "..."
+				}
+				
+				attachmentInfo := fmt.Sprintf("  %d. %s", i+1, green(attachmentType))
+				if mediaType != "" {
+					attachmentInfo += fmt.Sprintf(" (%s)", mediaType)
+				}
+				if name != "" {
+					attachmentInfo += fmt.Sprintf(": %s", name)
+				}
+				parts = append(parts, attachmentInfo)
+				
+				if url != "" {
+					parts = append(parts, fmt.Sprintf("     URL: %s", url))
+				}
+			}
 		}
 	}
 	
@@ -323,4 +383,22 @@ func stripHTML(html string) string {
 	result = strings.Join(strings.Fields(result), " ")
 	
 	return result
+}
+
+// formatArray formats an array of values into a readable string
+func formatArray(values []gjson.Result) string {
+	if len(values) == 0 {
+		return ""
+	}
+	
+	var items []string
+	for _, v := range values {
+		items = append(items, v.String())
+	}
+	
+	if len(items) == 1 {
+		return items[0]
+	}
+	
+	return fmt.Sprintf("[\n    %s\n  ]", strings.Join(items, ",\n    "))
 }

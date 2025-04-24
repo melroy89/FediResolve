@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/dennis/fediresolve/cmd"
+	"gitlab.melroy.org/melroy/fediresolve/cmd"
 )
 
 func main() {

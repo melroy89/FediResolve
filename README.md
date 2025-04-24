@@ -19,7 +19,7 @@ FediResolve is a command-line tool for resolving and displaying Fediverse conten
 ### Building from source
 
 ```bash
-git clone https://github.com/dennis/fediresolve.git
+git clone https://gitlab.melroy.org/melroy/fediresolve.git
 cd fediresolve
 go build
 ```

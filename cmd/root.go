@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/dennis/fediresolve/resolver"
+	"gitlab.melroy.org/melroy/fediresolve/resolver"
 	"github.com/spf13/cobra"
 )
 

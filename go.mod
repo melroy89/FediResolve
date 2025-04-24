@@ -1,4 +1,4 @@
-module github.com/dennis/fediresolve
+module gitlab.melroy.org/melroy/fediresolve
 
 go 1.21
 

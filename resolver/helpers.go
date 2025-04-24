@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dennis/fediresolve/formatter"
+	"gitlab.melroy.org/melroy/fediresolve/formatter"
 	"github.com/go-fed/httpsig"
 	"github.com/tidwall/gjson"
 )

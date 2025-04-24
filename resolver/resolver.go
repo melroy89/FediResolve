@@ -35,17 +35,35 @@ func ResolveInput(input string) (string, error) {
 
 // Resolve takes a URL or handle and resolves it to a formatted result
 func (r *Resolver) Resolve(input string) (string, error) {
+	// Check if input looks like a URL
+	if strings.HasPrefix(input, "http://") || strings.HasPrefix(input, "https://") {
+		fmt.Println("Detected URL, attempting direct resolution")
+		return r.resolveURL(input)
+	}
+	
 	// Check if input looks like a Fediverse handle (@username@domain.tld)
 	if strings.Contains(input, "@") {
-		// Simple check for handle format
-		if strings.HasPrefix(input, "@") || strings.Count(input, "@") == 2 {
-			fmt.Println("Detected Fediverse handle, using WebFinger resolution")
-			return r.resolveHandle(input)
+		// Handle format should be either @username@domain.tld or username@domain.tld
+		// and should not contain any slashes or other URL-like characters
+		if !strings.Contains(input, "/") && !strings.Contains(input, ":") {
+			if strings.HasPrefix(input, "@") {
+				// Format: @username@domain.tld
+				if strings.Count(input, "@") == 2 {
+					fmt.Println("Detected Fediverse handle, using WebFinger resolution")
+					return r.resolveHandle(input)
+				}
+			} else {
+				// Format: username@domain.tld
+				if strings.Count(input, "@") == 1 {
+					fmt.Println("Detected Fediverse handle, using WebFinger resolution")
+					return r.resolveHandle(input)
+				}
+			}
 		}
 	}
 
-	// Otherwise treat as URL
-	fmt.Println("Detected URL, attempting direct resolution")
+	// If we're not sure, try to treat it as a URL
+	fmt.Println("Input format unclear, attempting URL resolution")
 	return r.resolveURL(input)
 }
 

@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -32,39 +33,40 @@ func ResolveInput(input string) (string, error) {
 
 // Resolve takes a URL or handle and resolves it to a formatted result
 func (r *Resolver) Resolve(input string) (string, error) {
-	// Check if input looks like a URL
+	// Always prepend https:// if missing and not a handle
+	inputNorm := input
+	if !strings.HasPrefix(input, "http://") && !strings.HasPrefix(input, "https://") && !strings.Contains(input, "@") {
+		inputNorm = "https://" + input
+	}
+
+	parsedURL, err := url.Parse(inputNorm)
+	if err == nil && parsedURL.Host != "" && (parsedURL.Path == "" || parsedURL.Path == "/") && parsedURL.RawQuery == "" && parsedURL.Fragment == "" {
+		// Looks like a root domain (with or without scheme), fetch nodeinfo
+		raw, nodeinfo, _, err := r.ResolveObjectOrNodeInfo(parsedURL.String())
+		if err != nil {
+			return "", err
+		}
+		formatted, ferr := FormatHelperResult(raw, nodeinfo)
+		if ferr != nil {
+			return string(raw), nil
+		}
+		return formatted, nil
+	}
+
+	// If not a root domain, proceed with other checks
 	if strings.HasPrefix(input, "http://") || strings.HasPrefix(input, "https://") {
 		fmt.Println("Detected URL, attempting direct resolution")
-		// Special case: if input is just a root domain (no path or only "/"), use nodeinfo fallback
-		parsedURL, err := url.Parse(input)
-		if err == nil && (parsedURL.Path == "" || parsedURL.Path == "/") {
-			raw, nodeinfo, _, err := r.ResolveObjectOrNodeInfo(input)
-			if err != nil {
-				return "", err
-			}
-			// Format using the formatter (in helpers.go)
-			formatted, ferr := FormatHelperResult(raw, nodeinfo)
-			if ferr != nil {
-				return string(raw), nil
-			}
-			return formatted, nil
-		}
 		return r.resolveURL(input)
 	}
 
-	// Check if input looks like a Fediverse handle (@username@domain.tld)
 	if strings.Contains(input, "@") {
-		// Handle format should be either @username@domain.tld or username@domain.tld
-		// and should not contain any slashes or other URL-like characters
 		if !strings.Contains(input, "/") && !strings.Contains(input, ":") {
 			if strings.HasPrefix(input, "@") {
-				// Format: @username@domain.tld
 				if strings.Count(input, "@") == 2 {
 					fmt.Println("Detected Fediverse handle, using WebFinger resolution")
 					return r.resolveHandle(input)
 				}
 			} else {
-				// Format: username@domain.tld
 				if strings.Count(input, "@") == 1 {
 					fmt.Println("Detected Fediverse handle, using WebFinger resolution")
 					return r.resolveHandle(input)
@@ -73,7 +75,6 @@ func (r *Resolver) Resolve(input string) (string, error) {
 		}
 	}
 
-	// If we're not sure, try to treat it as a URL
 	fmt.Println("Input format unclear, attempting URL resolution")
 	return r.resolveURL(input)
 }
@@ -291,4 +292,13 @@ func (r *Resolver) fetchActivityPubObject(objectURL string) (string, error) {
 
 	// Use our signature-first approach by default
 	return r.fetchActivityPubObjectWithSignature(objectURL)
+}
+
+// isBareDomain returns true if input is a domain or domain/ (no scheme, no @, no path beyond optional trailing slash, allows port)
+var bareDomainRe = regexp.MustCompile(`^[a-zA-Z0-9.-]+(:[0-9]+)?/?$`)
+func isBareDomain(input string) bool {
+	if strings.Contains(input, "@") || strings.Contains(input, "://") {
+		return false
+	}
+	return bareDomainRe.MatchString(input)
 }

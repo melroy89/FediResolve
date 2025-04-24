@@ -181,6 +181,10 @@ func (r *Resolver) resolveURL(inputURL string) (string, error) {
 		return "", fmt.Errorf("error parsing URL: %v", err)
 	}
 
+	// For cross-instance URLs, we'll skip the redirect check
+	// because some instances (like Mastodon) have complex redirect systems
+	// that might not work reliably
+
 	// Check if this is a cross-instance URL (e.g., https://mastodon.social/@user@another.instance/123)
 	username := parsedURL.Path
 	if len(username) > 0 && username[0] == '/' {
@@ -204,35 +208,45 @@ func (r *Resolver) resolveURL(inputURL string) (string, error) {
 				fmt.Printf("Detected cross-instance URL. Original instance: %s, username: %s, post ID: %s\n", 
 					originalDomain, username, postID)
 				
-				// Try different URL formats that might work for the original instance
-				formats := []string{
+				// Try different URL formats that are commonly used by different Fediverse platforms
+				urlFormats := []string{
+					// Mastodon format
 					"https://%s/@%s/%s",
 					"https://%s/users/%s/statuses/%s",
-					"https://%s/notes/%s",
+					// Pleroma format
 					"https://%s/notice/%s",
+					// Misskey format
+					"https://%s/notes/%s",
+					// Friendica format
+					"https://%s/display/%s",
+					// Hubzilla format
+					"https://%s/item/%s",
 				}
 				
-				for _, format := range formats {
-					originalURL := fmt.Sprintf(format, originalDomain, username, postID)
-					fmt.Printf("Attempting to fetch from original instance: %s\n", originalURL)
+				// Try each URL format
+				for _, format := range urlFormats {
+					var targetURL string
+					if strings.Count(format, "%s") == 3 {
+						// Format with username
+						targetURL = fmt.Sprintf(format, originalDomain, username, postID)
+					} else {
+						// Format without username (just domain and ID)
+						targetURL = fmt.Sprintf(format, originalDomain, postID)
+					}
 					
-					// Try to fetch directly first
-					fmt.Printf("Trying with ActivityPub direct fetch: %s\n", originalURL)
-					result, err := r.fetchActivityPubObject(originalURL)
+					fmt.Printf("Trying URL format: %s\n", targetURL)
+					
+					// Try to fetch with our signature-first approach
+					result, err := r.fetchActivityPubObject(targetURL)
 					if err == nil {
 						return result, nil
 					}
 					
-					// If direct fetch fails and it's an auth error, try with HTTP signatures
-					if strings.Contains(err.Error(), "401 Unauthorized") || strings.Contains(err.Error(), "403 Forbidden") {
-						fmt.Printf("Direct fetch failed with auth error, trying with HTTP signatures: %s\n", originalURL)
-						result, sigErr := r.fetchWithSignature(originalURL)
-						if sigErr == nil {
-							return result, nil
-						}
-						fmt.Printf("HTTP signatures fetch also failed: %v\n", sigErr)
-					}
-					// If this fails, continue trying other formats
+					fmt.Printf("Failed with error: %v\n", err)
+					
+					// Add a delay between requests to avoid rate limiting
+					fmt.Println("Waiting 2 seconds before trying next URL format...")
+					time.Sleep(2 * time.Second)
 				}
 				
 				// If all formats fail, return the last error

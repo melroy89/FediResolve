@@ -515,3 +515,8 @@ func (r *Resolver) ResolveObjectOrNodeInfo(objectURL string) ([]byte, map[string
 func FormatHelperResult(raw []byte, nodeinfo map[string]interface{}) (string, error) {
 	return formatter.Format(nodeinfo)
 }
+
+// formatCanonicalResultHelper is used by resolver.go to format ActivityPub objects without importing formatter there
+func formatCanonicalResultHelper(jsonData []byte, data map[string]interface{}) (string, error) {
+	return formatter.Format(data)
+}

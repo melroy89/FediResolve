@@ -45,7 +45,7 @@ func (r *Resolver) Resolve(input string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		formatted, ferr := FormatHelperResult(raw, nodeinfo)
+		formatted, ferr := r.formatCanonicalResultHelper(raw, nodeinfo)
 		if ferr != nil {
 			return string(raw), nil
 		}
@@ -189,88 +189,89 @@ func (r *Resolver) resolveHandle(handle string) (string, error) {
 
 // resolveURL resolves a Fediverse URL to its ActivityPub representation
 func (r *Resolver) resolveURL(inputURL string) (string, error) {
-	// Parse the URL
-	parsedURL, err := url.Parse(inputURL)
+	// Always fetch the provided URL as-is, using ActivityPub Accept header and HTTP signatures
+	// Then, if the response contains an `id` field that differs from the requested URL, fetch that recursively
+	return r.resolveCanonicalActivityPub(inputURL, 0)
+}
+
+// resolveCanonicalActivityPub fetches the ActivityPub object at the given URL, and if the response contains an `id` field
+// that differs from the requested URL, recursively fetches that canonical URL. Max depth is used to prevent infinite loops.
+func (r *Resolver) resolveCanonicalActivityPub(objectURL string, depth int) (string, error) {
+	if depth > 3 {
+		return "", fmt.Errorf("Too many canonical redirects (possible loop)")
+	}
+	fmt.Printf("Fetching ActivityPub object for canonical resolution: %s\n", objectURL)
+	jsonData, err := r.fetchActivityPubObjectWithSignatureRaw(objectURL)
 	if err != nil {
-		return "", fmt.Errorf("error parsing URL: %v", err)
+		return "", err
 	}
-
-	// For cross-instance URLs, we'll skip the redirect check
-	// because some instances (like Mastodon) have complex redirect systems
-	// that might not work reliably
-
-	// Check if this is a cross-instance URL (e.g., https://mastodon.social/@user@another.instance/123)
-	username := parsedURL.Path
-	if len(username) > 0 && username[0] == '/' {
-		username = username[1:]
+	var data map[string]interface{}
+	if err := json.Unmarshal(jsonData, &data); err != nil {
+		return "", fmt.Errorf("error parsing ActivityPub JSON: %v", err)
 	}
-
-	// Check if the username contains an @ symbol (indicating a cross-instance URL)
-	if strings.HasPrefix(username, "@") && strings.Contains(username[1:], "@") {
-		// This is a cross-instance URL
-		fmt.Println("Detected cross-instance URL. Original instance:", strings.Split(username[1:], "/")[0])
-
-		// Extract the original instance, username, and post ID
-		parts := strings.Split(username, "/")
-		if len(parts) >= 2 {
-			userParts := strings.Split(parts[0][1:], "@") // Remove the leading @ and split by @
-			if len(userParts) == 2 {
-				username := userParts[0]
-				originalDomain := userParts[1]
-				postID := parts[1]
-
-				fmt.Printf("Detected cross-instance URL. Original instance: %s, username: %s, post ID: %s\n",
-					originalDomain, username, postID)
-
-				// Try different URL formats that are commonly used by different Fediverse platforms
-				urlFormats := []string{
-					// Mastodon format
-					"https://%s/@%s/%s",
-					"https://%s/users/%s/statuses/%s",
-					// Pleroma format
-					"https://%s/notice/%s",
-					// Misskey format
-					"https://%s/notes/%s",
-					// Friendica format
-					"https://%s/display/%s",
-					// Hubzilla format
-					"https://%s/item/%s",
-				}
-
-				// Try each URL format
-				for _, format := range urlFormats {
-					var targetURL string
-					if strings.Count(format, "%s") == 3 {
-						// Format with username
-						targetURL = fmt.Sprintf(format, originalDomain, username, postID)
-					} else {
-						// Format without username (just domain and ID)
-						targetURL = fmt.Sprintf(format, originalDomain, postID)
-					}
-
-					fmt.Printf("Trying URL format: %s\n", targetURL)
-
-					// Try to fetch with our signature-first approach
-					result, err := r.fetchActivityPubObject(targetURL)
-					if err == nil {
-						return result, nil
-					}
-
-					fmt.Printf("Failed with error: %v\n", err)
-
-					// Add a delay between requests to avoid rate limiting
-					fmt.Println("Waiting 2 seconds before trying next URL format...")
-					time.Sleep(2 * time.Second)
-				}
-
-				// If all formats fail, return the last error
-				return "", fmt.Errorf("failed to fetch content from original instance %s: all URL formats tried", originalDomain)
-			}
-		}
+	idVal, ok := data["id"].(string)
+	if ok && idVal != "" && idVal != objectURL {
+		fmt.Printf("Found canonical id: %s (different from requested URL), following...\n", idVal)
+		return r.resolveCanonicalActivityPub(idVal, depth+1)
 	}
+	// If no id or already canonical, format and return using helpers.go
+	return r.formatCanonicalResultHelper(jsonData, data)
+}
 
-	// If not a cross-instance URL, fetch the ActivityPub object directly
-	return r.fetchActivityPubObject(inputURL)
+// fetchActivityPubObjectWithSignatureRaw fetches an ActivityPub object and returns the raw JSON []byte (not formatted)
+func (r *Resolver) fetchActivityPubObjectWithSignatureRaw(objectURL string) ([]byte, error) {
+	fmt.Printf("Fetching ActivityPub object with HTTP signatures from: %s\n", objectURL)
+
+	actorURL, err := r.extractActorURLFromObjectURL(objectURL)
+	if err != nil {
+		return nil, fmt.Errorf("Could not extract actor URL: %v", err)
+	}
+	actorData, err := r.fetchActorData(actorURL)
+	if err != nil {
+		return nil, fmt.Errorf("Could not fetch actor data: %v", err)
+	}
+	keyID, _, err := r.extractPublicKey(actorData)
+	if err != nil {
+		return nil, fmt.Errorf("Could not extract public key: %v", err)
+	}
+	privateKey, err := generateRSAKey()
+	if err != nil {
+		return nil, fmt.Errorf("Could not generate RSA key: %v", err)
+	}
+	// Sign and send the request
+	req, err := http.NewRequest("GET", objectURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("error creating signed request: %v", err)
+	}
+	req.Header.Set("Accept", "application/ld+json, application/activity+json")
+	req.Header.Set("User-Agent", UserAgent)
+	req.Header.Set("Date", time.Now().UTC().Format(http.TimeFormat))
+	if err := signRequest(req, keyID, privateKey); err != nil {
+		return nil, fmt.Errorf("Could not sign request: %v", err)
+	}
+	resp, err := r.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("error sending signed request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("signed request failed with status: %s, body: %s", resp.Status, string(body))
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error reading response: %v", err)
+	}
+	if len(body) == 0 {
+		return nil, fmt.Errorf("received empty response body")
+	}
+	return body, nil
+}
+
+// formatCanonicalResultHelper formats the ActivityPub object for display
+func (r *Resolver) formatCanonicalResultHelper(jsonData []byte, data map[string]interface{}) (string, error) {
+	// Call the new helper method from helpers.go
+	return formatCanonicalResultHelper(jsonData, data)
 }
 
 // fetchActivityPubObject fetches an ActivityPub object from a URL

@@ -30,7 +30,7 @@ go-mod-tidy:
 build:
   stage: build
   script:
-    - go build
+    - go build -ldflags "-s -w"
     - echo "ARTIFACT_URL=${CI_PROJECT_URL}/-/jobs/${CI_JOB_ID}/artifacts/file/fediresolve" >> variables.env
   artifacts:
     paths:

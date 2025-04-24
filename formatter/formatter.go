@@ -1,6 +1,7 @@
 package formatter
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -16,8 +17,21 @@ func Format(jsonData []byte) (string, error) {
 	// Create a summary based on the object type
 	summary := createSummary(jsonData)
 
+	// This might look unnecessary, but it is not in order to beautify the JSON.
+	// First Unmarkshall to get a map[string]interface{}
+	var data map[string]interface{}
+	if err := json.Unmarshal(jsonData, &data); err != nil {
+		return "", fmt.Errorf("error parsing JSON: %v", err)
+	}
+
+	// Marshal with indentation to beautify the output
+	pretty, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("error beautifying JSON: %v", err)
+	}
+
 	// Combine the full JSON first, followed by the summary at the bottom
-	result := fmt.Sprintf("%s\n\n%s", string(jsonData), summary)
+	result := fmt.Sprintf("%s\n\n%s", pretty, summary)
 	return result, nil
 }
 

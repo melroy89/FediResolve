@@ -3,6 +3,7 @@ module gitlab.melroy.org/melroy/fediresolve
 go 1.21
 
 require (
+	github.com/JohannesKaufmann/html-to-markdown v1.6.0
 	github.com/fatih/color v1.16.0
 	github.com/go-fed/httpsig v1.1.0
 	github.com/spf13/cobra v1.8.0
@@ -11,7 +12,6 @@ require (
 )
 
 require (
-	github.com/JohannesKaufmann/html-to-markdown v1.6.0 // indirect
 	github.com/MichaelMure/go-term-text v0.3.1 // indirect
 	github.com/PuerkitoBio/goquery v1.9.2 // indirect
 	github.com/alecthomas/chroma v0.10.0 // indirect

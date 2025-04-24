@@ -8,7 +8,7 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/tidwall/gjson"
-	"github.com/vlanse/go-term-markdown"
+	markdown "github.com/vlanse/go-term-markdown"
 )
 
 // Format takes ActivityPub data and returns a formatted string representation
@@ -357,7 +357,7 @@ func formatTombstone(jsonStr string, parts []string, bold, green, yellow func(a 
 // Helper to convert HTML to Markdown and render to terminal
 func renderMarkdown(md string) string {
 	// width=80, no color override, no emoji, no images
-	return string(markdown.Render(md, 80, 6))
+	return string(markdown.Render(md, 78, 2))
 }
 
 // Replace stripHTML with htmlToMarkdown

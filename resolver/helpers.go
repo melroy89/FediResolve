@@ -18,7 +18,7 @@ import (
 // Define common constants
 const (
 	// UserAgent is the user agent string used for all HTTP requests
-	UserAgent    = "FediResolve/1.0 (https://melroy.org)"
+	UserAgent    = "FediResolve/1.0 (https://github.com/melroy89/FediResolve)"
 	AcceptHeader = "application/activity+json, application/ld+json"
 )
 
@@ -33,31 +33,10 @@ func (r *Resolver) fetchActivityPubObjectWithSignature(objectURL string) ([]byte
 		return nil, nil, err
 	}
 
-	var keyID string
-	actorURL, ok := data["attributedTo"].(string)
-	if !ok || actorURL == "" {
-		fmt.Printf("Could not find attributedTo in object\n")
-		// Try to find key in the object itself
-		// Try to catch an error
-		if _, ok := data["publicKey"].(map[string]interface{}); !ok {
-			return nil, nil, fmt.Errorf("could not find public key in object")
-		}
-		if _, ok := data["publicKey"].(map[string]interface{})["id"]; !ok {
-			return nil, nil, fmt.Errorf("could not find public key ID in object")
-		}
-		keyID = data["publicKey"].(map[string]interface{})["id"].(string)
-	} else {
-		// Fetch actor data
-		_, actorData, err := r.fetchActorData(actorURL)
-		if err != nil {
-			return nil, nil, fmt.Errorf("could not fetch actor data: %v", err)
-		}
-		// Extract the public key ID
-		key, err := r.extractPublicKey(actorData)
-		if err != nil {
-			return nil, nil, fmt.Errorf("could not extract public key: %v", err)
-		}
-		keyID = key
+	// Extract the public key ID
+	keyID, err := r.extractPublicKey(data)
+	if err != nil {
+		return nil, nil, fmt.Errorf("could not extract public key: %v", err)
 	}
 
 	// Create a new private key for signing (in a real app, we would use a persistent key)
@@ -227,25 +206,49 @@ func (r *Resolver) fetchActorData(actorURL string) ([]byte, map[string]interface
 }
 
 // extractPublicKey extracts the public key ID from actor data
-func (r *Resolver) extractPublicKey(actorData map[string]interface{}) (string, error) {
+func (r *Resolver) extractPublicKey(data map[string]interface{}) (string, error) {
 	// Convert to JSON string for easier parsing with gjson
-	actorJSON, err := json.Marshal(actorData)
+	dataJSON, err := json.Marshal(data)
 	if err != nil {
 		return "", fmt.Errorf("error marshaling actor data: %v", err)
 	}
 
-	// Extract key ID
-	keyID := gjson.GetBytes(actorJSON, "publicKey.id").String()
-	if keyID == "" {
-		// Try alternate formats
-		keyID = gjson.GetBytes(actorJSON, "publicKey.0.id").String()
-	}
-	if keyID == "" {
-		fmt.Printf("could not find public key ID in actor data")
-		return "dummy", nil
-	}
+	// Try to find the attributedTo URL using dataJSON
+	actorURL := gjson.GetBytes(dataJSON, "attributedTo").String()
 
-	return keyID, nil
+	if actorURL == "" {
+		fmt.Printf("Could not find attributedTo in object\n")
+		// Try to find key in the object itself
+		keyID := gjson.GetBytes(dataJSON, "publicKey.id").String()
+
+		if keyID == "" {
+			return "", fmt.Errorf("could not find public key ID in object")
+		}
+		return keyID, nil
+	} else {
+		_, actorData, err := r.fetchActorData(actorURL)
+		if err != nil {
+			return "", fmt.Errorf("error fetching actor data: %v", err)
+		}
+
+		// Convert actorData to JSON
+		actorJSON, err := json.Marshal(actorData)
+		if err != nil {
+			return "", fmt.Errorf("error marshaling actor data: %v", err)
+		}
+
+		// Extract key ID
+		keyID := gjson.GetBytes(actorJSON, "publicKey.id").String()
+		if keyID == "" {
+			// Try alternate formats
+			keyID = gjson.GetBytes(actorJSON, "publicKey.0.id").String()
+		}
+		if keyID == "" {
+			fmt.Printf("could not find public key ID in actor data")
+			return "dummy", nil
+		}
+		return keyID, nil
+	}
 }
 
 // generateRSAKey generates a new RSA key pair for signing requests

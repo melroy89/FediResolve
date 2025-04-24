@@ -8,6 +8,7 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/tidwall/gjson"
+	"github.com/vlanse/go-term-markdown"
 )
 
 // Format takes ActivityPub data and returns a formatted string representation
@@ -87,7 +88,8 @@ func formatActor(jsonStr string, parts []string, bold, cyan, green, red, yellow 
 	}
 
 	if summary := gjson.Get(jsonStr, "summary").String(); summary != "" {
-		parts = append(parts, fmt.Sprintf("%s: %s", bold("Summary"), summary))
+		md := htmlToMarkdown(summary)
+		parts = append(parts, fmt.Sprintf("%s:\n%s", bold("Summary"), renderMarkdown(md)))
 	}
 
 	if published := gjson.Get(jsonStr, "published").String(); published != "" {
@@ -108,12 +110,11 @@ func formatActor(jsonStr string, parts []string, bold, cyan, green, red, yellow 
 // formatContent formats content-type objects (Note, Article, etc.)
 func formatContent(jsonStr string, parts []string, bold, green, yellow func(a ...interface{}) string) []string {
 	if content := gjson.Get(jsonStr, "content").String(); content != "" {
-		// Strip HTML tags for display
-		content = stripHTML(content)
-		if len(content) > 300 {
-			content = content[:297] + "..."
+		md := htmlToMarkdown(content)
+		if len(md) > 300 {
+			md = md[:297] + "..."
 		}
-		parts = append(parts, fmt.Sprintf("%s: %s", bold("Content"), content))
+		parts = append(parts, fmt.Sprintf("%s:\n%s", bold("Content"), renderMarkdown(md)))
 	}
 
 	// Check for attachments (images, videos, etc.)
@@ -204,11 +205,8 @@ func formatActivity(jsonStr string, parts []string, bold, green, yellow func(a .
 		parts = append(parts, fmt.Sprintf("%s: %s", bold("Object Type"), yellow(objectType)))
 
 		if content := gjson.Get(jsonStr, "object.content").String(); content != "" {
-			content = stripHTML(content)
-			if len(content) > 300 {
-				content = content[:297] + "..."
-			}
-			parts = append(parts, fmt.Sprintf("%s: %s", bold("Content"), content))
+			md := htmlToMarkdown(content)
+			parts = append(parts, fmt.Sprintf("%s:\n%s", bold("Content"), renderMarkdown(md)))
 		}
 
 		// Check for attachments in the object
@@ -324,11 +322,8 @@ func formatEvent(jsonStr string, parts []string, bold, green, yellow func(a ...i
 	}
 
 	if content := gjson.Get(jsonStr, "content").String(); content != "" {
-		content = stripHTML(content)
-		if len(content) > 300 {
-			content = content[:297] + "..."
-		}
-		parts = append(parts, fmt.Sprintf("%s: %s", bold("Description"), content))
+		md := htmlToMarkdown(content)
+		parts = append(parts, fmt.Sprintf("%s:\n%s", bold("Description"), renderMarkdown(md)))
 	}
 
 	if startTime := gjson.Get(jsonStr, "startTime").String(); startTime != "" {
@@ -359,6 +354,34 @@ func formatTombstone(jsonStr string, parts []string, bold, green, yellow func(a 
 	return parts
 }
 
+// Helper to convert HTML to Markdown and render to terminal
+func renderMarkdown(md string) string {
+	// width=80, no color override, no emoji, no images
+	return string(markdown.Render(md, 80, 6))
+}
+
+// Replace stripHTML with htmlToMarkdown
+func htmlToMarkdown(html string) string {
+	// For now, a basic replacement (optionally, use a library for better conversion)
+	html = strings.ReplaceAll(html, "<br>", "\n")
+	html = strings.ReplaceAll(html, "<br/>", "\n")
+	html = strings.ReplaceAll(html, "<p>", "\n")
+	html = strings.ReplaceAll(html, "</p>", "\n")
+	// Remove all other tags
+	for {
+		startIdx := strings.Index(html, "<")
+		if startIdx == -1 {
+			break
+		}
+		endIdx := strings.Index(html[startIdx:], ">")
+		if endIdx == -1 {
+			break
+		}
+		html = html[:startIdx] + html[startIdx+endIdx+1:]
+	}
+	return html
+}
+
 // formatDate formats an ISO 8601 date string to a more readable format
 func formatDate(isoDate string) string {
 	t, err := time.Parse(time.RFC3339, isoDate)
@@ -366,46 +389,6 @@ func formatDate(isoDate string) string {
 		return isoDate
 	}
 	return t.Format("Jan 02, 2006 15:04:05")
-}
-
-// stripHTML removes HTML tags from a string
-func stripHTML(html string) string {
-	// Simple HTML tag stripping - in a real implementation, you might want to use a proper HTML parser
-	result := html
-
-	// Replace common HTML entities
-	replacements := map[string]string{
-		"&amp;":  "&",
-		"&lt;":   "<",
-		"&gt;":   ">",
-		"&quot;": "\"",
-		"&#39;":  "'",
-		"&nbsp;": " ",
-	}
-
-	for entity, replacement := range replacements {
-		result = strings.ReplaceAll(result, entity, replacement)
-	}
-
-	// Remove HTML tags
-	for {
-		startIdx := strings.Index(result, "<")
-		if startIdx == -1 {
-			break
-		}
-
-		endIdx := strings.Index(result[startIdx:], ">")
-		if endIdx == -1 {
-			break
-		}
-
-		result = result[:startIdx] + result[startIdx+endIdx+1:]
-	}
-
-	// Normalize whitespace
-	result = strings.Join(strings.Fields(result), " ")
-
-	return result
 }
 
 // formatArray formats an array of values into a readable string

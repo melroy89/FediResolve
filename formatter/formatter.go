@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
+	h2m "github.com/JohannesKaufmann/html-to-markdown"
 	"github.com/fatih/color"
 	"github.com/tidwall/gjson"
 	markdown "github.com/vlanse/go-term-markdown"
-	h2m "github.com/JohannesKaufmann/html-to-markdown"
 )
 
 // Format takes ActivityPub data and returns a formatted string representation
@@ -88,6 +88,12 @@ func formatActor(jsonStr string, parts []string, bold, cyan, green, red, yellow 
 		parts = append(parts, fmt.Sprintf("%s: %s", bold("URL"), green(url)))
 	}
 
+	// Add avatar (icon) link if present
+	iconUrl := gjson.Get(jsonStr, "icon.url").String()
+	if iconUrl != "" {
+		parts = append(parts, fmt.Sprintf("%s: %s", bold("Avatar"), green(iconUrl)))
+	}
+
 	if summary := gjson.Get(jsonStr, "summary").String(); summary != "" {
 		md := htmlToMarkdown(summary)
 		parts = append(parts, fmt.Sprintf("%s:\n%s", bold("Summary"), renderMarkdown(md)))
@@ -103,12 +109,6 @@ func formatActor(jsonStr string, parts []string, bold, cyan, green, red, yellow 
 
 	if following := gjson.Get(jsonStr, "following").String(); following != "" {
 		parts = append(parts, fmt.Sprintf("%s: %s", bold("Following"), green(following)))
-	}
-
-	// Add avatar (icon) link if present
-	iconUrl := gjson.Get(jsonStr, "icon.url").String()
-	if iconUrl != "" {
-		parts = append(parts, fmt.Sprintf("%s: %s", bold("Avatar"), green(iconUrl)))
 	}
 
 	return parts

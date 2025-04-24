@@ -8,9 +8,6 @@ import (
 	"net/url"
 	"strings"
 	"time"
-
-	"github.com/dennis/fediresolve/formatter"
-	"github.com/tidwall/gjson"
 )
 
 // Resolver handles the resolution of Fediverse URLs and handles
@@ -181,23 +178,75 @@ func (r *Resolver) resolveURL(inputURL string) (string, error) {
 	// Parse the URL
 	parsedURL, err := url.Parse(inputURL)
 	if err != nil {
-		return "", fmt.Errorf("invalid URL: %v", err)
+		return "", fmt.Errorf("error parsing URL: %v", err)
 	}
 
-	// Ensure the URL has a scheme
-	if parsedURL.Scheme == "" {
-		inputURL = "https://" + inputURL
-		parsedURL, err = url.Parse(inputURL)
-		if err != nil {
-			return "", fmt.Errorf("invalid URL: %v", err)
+	// Check if this is a cross-instance URL (e.g., https://mastodon.social/@user@another.instance/123)
+	username := parsedURL.Path
+	if len(username) > 0 && username[0] == '/' {
+		username = username[1:]
+	}
+
+	// Check if the username contains an @ symbol (indicating a cross-instance URL)
+	if strings.HasPrefix(username, "@") && strings.Contains(username[1:], "@") {
+		// This is a cross-instance URL
+		fmt.Println("Detected cross-instance URL. Original instance:", strings.Split(username[1:], "/")[0])
+		
+		// Extract the original instance, username, and post ID
+		parts := strings.Split(username, "/")
+		if len(parts) >= 2 {
+			userParts := strings.Split(parts[0][1:], "@") // Remove the leading @ and split by @
+			if len(userParts) == 2 {
+				username := userParts[0]
+				originalDomain := userParts[1]
+				postID := parts[1]
+				
+				fmt.Printf("Detected cross-instance URL. Original instance: %s, username: %s, post ID: %s\n", 
+					originalDomain, username, postID)
+				
+				// Try different URL formats that might work for the original instance
+				formats := []string{
+					"https://%s/@%s/%s",
+					"https://%s/users/%s/statuses/%s",
+					"https://%s/notes/%s",
+					"https://%s/notice/%s",
+				}
+				
+				for _, format := range formats {
+					originalURL := fmt.Sprintf(format, originalDomain, username, postID)
+					fmt.Printf("Attempting to fetch from original instance: %s\n", originalURL)
+					
+					// Try to fetch directly first
+					fmt.Printf("Trying with ActivityPub direct fetch: %s\n", originalURL)
+					result, err := r.fetchActivityPubObject(originalURL)
+					if err == nil {
+						return result, nil
+					}
+					
+					// If direct fetch fails and it's an auth error, try with HTTP signatures
+					if strings.Contains(err.Error(), "401 Unauthorized") || strings.Contains(err.Error(), "403 Forbidden") {
+						fmt.Printf("Direct fetch failed with auth error, trying with HTTP signatures: %s\n", originalURL)
+						result, sigErr := r.fetchWithSignature(originalURL)
+						if sigErr == nil {
+							return result, nil
+						}
+						fmt.Printf("HTTP signatures fetch also failed: %v\n", sigErr)
+					}
+					// If this fails, continue trying other formats
+				}
+				
+				// If all formats fail, return the last error
+				return "", fmt.Errorf("failed to fetch content from original instance %s: all URL formats tried", originalDomain)
+			}
 		}
 	}
 
-	// Try to fetch the ActivityPub object directly
+	// If not a cross-instance URL, fetch the ActivityPub object directly
 	return r.fetchActivityPubObject(inputURL)
 }
 
 // fetchActivityPubObject fetches an ActivityPub object from a URL
+// This function now uses a signature-first approach by default
 func (r *Resolver) fetchActivityPubObject(objectURL string) (string, error) {
 	fmt.Printf("Fetching ActivityPub object from: %s\n", objectURL)
 	
@@ -206,79 +255,12 @@ func (r *Resolver) fetchActivityPubObject(objectURL string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("invalid URL: %v", err)
 	}
-
+	
 	// Ensure the URL has a scheme
 	if parsedURL.Scheme == "" {
 		objectURL = "https://" + objectURL
-		parsedURL, err = url.Parse(objectURL)
-		if err != nil {
-			return "", fmt.Errorf("invalid URL: %v", err)
-		}
 	}
 	
-	// Create the request
-	req, err := http.NewRequest("GET", objectURL, nil)
-	if err != nil {
-		return "", fmt.Errorf("error creating request: %v", err)
-	}
-
-	// Set Accept headers to request ActivityPub data
-	// Use multiple Accept headers to increase compatibility with different servers
-	req.Header.Set("Accept", "application/activity+json, application/ld+json; profile=\"https://www.w3.org/ns/activitystreams\", application/json")
-	req.Header.Set("User-Agent", "FediResolve/1.0 (https://github.com/dennis/fediresolve)")
-
-	// Perform the request
-	fmt.Printf("Sending request with headers: %v\n", req.Header)
-	resp, err := r.client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("error fetching ActivityPub data: %v", err)
-	}
-	defer resp.Body.Close()
-
-	fmt.Printf("Received response with status: %s\n", resp.Status)
-	if resp.StatusCode != http.StatusOK {
-		// Try to read the error response body for debugging
-		errorBody, _ := ioutil.ReadAll(resp.Body)
-		return "", fmt.Errorf("ActivityPub request failed with status: %s\nResponse body: %s", 
-			resp.Status, string(errorBody))
-	}
-
-	// Read and parse the ActivityPub response
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("error reading ActivityPub response: %v", err)
-	}
-	
-	// Debug output
-	fmt.Printf("ActivityPub response content type: %s\n", resp.Header.Get("Content-Type"))
-	
-	// Check if the response is empty
-	if len(body) == 0 {
-		return "", fmt.Errorf("received empty response body")
-	}
-	
-	// Try to decode the JSON response
-	var data map[string]interface{}
-	if err := json.Unmarshal(body, &data); err != nil {
-		// If we can't parse as JSON, return the raw response for debugging
-		return "", fmt.Errorf("error decoding ActivityPub response: %v\nResponse body: %s", 
-			err, string(body))
-	}
-
-	// Check if this is a shared/forwarded object and we need to fetch the original
-	jsonData, _ := json.Marshal(data)
-	jsonStr := string(jsonData)
-
-	// Check for various ActivityPub types that might reference an original object
-	if gjson.Get(jsonStr, "type").String() == "Announce" {
-		// This is a boost/share, get the original object
-		originalURL := gjson.Get(jsonStr, "object").String()
-		if originalURL != "" && (strings.HasPrefix(originalURL, "http://") || strings.HasPrefix(originalURL, "https://")) {
-			fmt.Printf("Found Announce, following original at: %s\n", originalURL)
-			return r.fetchActivityPubObject(originalURL)
-		}
-	}
-
-	// Format the result
-	return formatter.Format(data)
+	// Use our signature-first approach by default
+	return r.fetchActivityPubObjectWithSignature(objectURL)
 }

@@ -3,7 +3,7 @@ package resolver
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -37,7 +37,7 @@ func (r *Resolver) Resolve(input string) (string, error) {
 		fmt.Println("Detected URL, attempting direct resolution")
 		return r.resolveURL(input)
 	}
-	
+
 	// Check if input looks like a Fediverse handle (@username@domain.tld)
 	if strings.Contains(input, "@") {
 		// Handle format should be either @username@domain.tld or username@domain.tld
@@ -88,24 +88,24 @@ func (r *Resolver) resolveHandle(handle string) (string, error) {
 	}
 
 	username, domain := parts[0], parts[1]
-	
+
 	// Construct WebFinger URL with proper URL encoding
 	resource := fmt.Sprintf("acct:%s@%s", username, domain)
-	webfingerURL := fmt.Sprintf("https://%s/.well-known/webfinger?resource=%s", 
+	webfingerURL := fmt.Sprintf("https://%s/.well-known/webfinger?resource=%s",
 		domain, url.QueryEscape(resource))
 
 	fmt.Printf("Fetching WebFinger data from: %s\n", webfingerURL)
-	
+
 	// Create request for WebFinger data
 	req, err := http.NewRequest("GET", webfingerURL, nil)
 	if err != nil {
 		return "", fmt.Errorf("error creating WebFinger request: %v", err)
 	}
-	
+
 	// Set appropriate headers for WebFinger
 	req.Header.Set("Accept", "application/jrd+json, application/json")
 	req.Header.Set("User-Agent", UserAgent)
-	
+
 	// Fetch WebFinger data
 	resp, err := r.client.Do(req)
 	if err != nil {
@@ -118,14 +118,14 @@ func (r *Resolver) resolveHandle(handle string) (string, error) {
 	}
 
 	// Read and parse the WebFinger response
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", fmt.Errorf("error reading WebFinger response: %v", err)
 	}
-	
+
 	fmt.Printf("WebFinger response content type: %s\n", resp.Header.Get("Content-Type"))
 	fmt.Printf("WebFinger response body: %s\n", string(body))
-	
+
 	var webfinger WebFingerResponse
 	if err := json.Unmarshal(body, &webfinger); err != nil {
 		return "", fmt.Errorf("error decoding WebFinger response: %v", err)
@@ -195,7 +195,7 @@ func (r *Resolver) resolveURL(inputURL string) (string, error) {
 	if strings.HasPrefix(username, "@") && strings.Contains(username[1:], "@") {
 		// This is a cross-instance URL
 		fmt.Println("Detected cross-instance URL. Original instance:", strings.Split(username[1:], "/")[0])
-		
+
 		// Extract the original instance, username, and post ID
 		parts := strings.Split(username, "/")
 		if len(parts) >= 2 {
@@ -204,10 +204,10 @@ func (r *Resolver) resolveURL(inputURL string) (string, error) {
 				username := userParts[0]
 				originalDomain := userParts[1]
 				postID := parts[1]
-				
-				fmt.Printf("Detected cross-instance URL. Original instance: %s, username: %s, post ID: %s\n", 
+
+				fmt.Printf("Detected cross-instance URL. Original instance: %s, username: %s, post ID: %s\n",
 					originalDomain, username, postID)
-				
+
 				// Try different URL formats that are commonly used by different Fediverse platforms
 				urlFormats := []string{
 					// Mastodon format
@@ -222,7 +222,7 @@ func (r *Resolver) resolveURL(inputURL string) (string, error) {
 					// Hubzilla format
 					"https://%s/item/%s",
 				}
-				
+
 				// Try each URL format
 				for _, format := range urlFormats {
 					var targetURL string
@@ -233,22 +233,22 @@ func (r *Resolver) resolveURL(inputURL string) (string, error) {
 						// Format without username (just domain and ID)
 						targetURL = fmt.Sprintf(format, originalDomain, postID)
 					}
-					
+
 					fmt.Printf("Trying URL format: %s\n", targetURL)
-					
+
 					// Try to fetch with our signature-first approach
 					result, err := r.fetchActivityPubObject(targetURL)
 					if err == nil {
 						return result, nil
 					}
-					
+
 					fmt.Printf("Failed with error: %v\n", err)
-					
+
 					// Add a delay between requests to avoid rate limiting
 					fmt.Println("Waiting 2 seconds before trying next URL format...")
 					time.Sleep(2 * time.Second)
 				}
-				
+
 				// If all formats fail, return the last error
 				return "", fmt.Errorf("failed to fetch content from original instance %s: all URL formats tried", originalDomain)
 			}
@@ -263,18 +263,18 @@ func (r *Resolver) resolveURL(inputURL string) (string, error) {
 // This function now uses a signature-first approach by default
 func (r *Resolver) fetchActivityPubObject(objectURL string) (string, error) {
 	fmt.Printf("Fetching ActivityPub object from: %s\n", objectURL)
-	
+
 	// Make sure the URL is valid
 	parsedURL, err := url.Parse(objectURL)
 	if err != nil {
 		return "", fmt.Errorf("invalid URL: %v", err)
 	}
-	
+
 	// Ensure the URL has a scheme
 	if parsedURL.Scheme == "" {
 		objectURL = "https://" + objectURL
 	}
-	
+
 	// Use our signature-first approach by default
 	return r.fetchActivityPubObjectWithSignature(objectURL)
 }

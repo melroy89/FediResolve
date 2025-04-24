@@ -6,8 +6,8 @@ import (
 	"os"
 	"strings"
 
-	"gitlab.melroy.org/melroy/fediresolve/resolver"
 	"github.com/spf13/cobra"
+	"gitlab.melroy.org/melroy/fediresolve/resolver"
 )
 
 var rootCmd = &cobra.Command{
@@ -47,8 +47,4 @@ The tool supports both direct URLs to posts/comments/threads and Fediverse handl
 // Execute adds all child commands to the root command and sets flags appropriately.
 func Execute() error {
 	return rootCmd.Execute()
-}
-
-func init() {
-	// Here you can define flags and configuration settings
 }

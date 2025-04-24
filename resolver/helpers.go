@@ -3,7 +3,6 @@ package resolver
 import (
 	"crypto/rand"
 	"crypto/rsa"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -274,33 +273,19 @@ func (r *Resolver) fetchNodeInfo(domain string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error reading nodeinfo discovery: %v", err)
 	}
-	var discovery struct {
-		Links []struct {
-			Rel  string `json:"rel"`
-			Href string `json:"href"`
-		} `json:"links"`
-	}
-	if err := json.Unmarshal(body, &discovery); err != nil {
-		return nil, fmt.Errorf("error parsing nodeinfo discovery: %v", err)
-	}
+
 	var nodeinfoHref string
-	for _, link := range discovery.Links {
-		if strings.HasSuffix(link.Rel, "/schema/2.1") {
-			nodeinfoHref = link.Href
-			break
-		}
+	result := gjson.GetBytes(body, `links.#(rel%"*/schema/2.1").href`)
+	if !result.Exists() {
+		result = gjson.GetBytes(body, `links.#(rel%"*/schema/2.0").href`)
 	}
-	if nodeinfoHref == "" {
-		for _, link := range discovery.Links {
-			if strings.HasSuffix(link.Rel, "/schema/2.0") {
-				nodeinfoHref = link.Href
-				break
-			}
-		}
+	if result.Exists() {
+		nodeinfoHref = result.String()
 	}
 	if nodeinfoHref == "" {
 		return nil, fmt.Errorf("no nodeinfo schema 2.1 or 2.0 found")
 	}
+
 	fmt.Printf("Fetching nodeinfo from: %s\n", nodeinfoHref)
 	resp2, err := r.client.Get(nodeinfoHref)
 	if err != nil {

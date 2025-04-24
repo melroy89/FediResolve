@@ -131,6 +131,7 @@ func formatContent(jsonStr string, parts []string, bold, green, yellow func(a ..
 			attachmentType := attachment.Get("type").String()
 			mediaType := attachment.Get("mediaType").String()
 			url := attachment.Get("url").String()
+			href := attachment.Get("href").String()
 			name := attachment.Get("name").String()
 
 			// Truncate long descriptions
@@ -147,7 +148,11 @@ func formatContent(jsonStr string, parts []string, bold, green, yellow func(a ..
 			}
 			parts = append(parts, attachmentInfo)
 
-			if url != "" {
+			// For type Page and attachment type Link, show href if present
+			objectType := gjson.Get(jsonStr, "type").String()
+			if objectType == "Page" && attachmentType == "Link" && href != "" {
+				parts = append(parts, fmt.Sprintf("     URL: %s", green(href)))
+			} else if url != "" {
 				parts = append(parts, fmt.Sprintf("     URL: %s", green(url)))
 			}
 		}

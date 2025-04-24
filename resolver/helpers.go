@@ -187,6 +187,8 @@ func (r *Resolver) fetchActorData(actorURL string) ([]byte, error) {
 }
 
 // extractPublicKey extracts the public key ID from actor data
+// TODO: We are actually now extracting the ID not the public key pem....
+// Lets  see if we can improve this, without breaking the signing.
 func (r *Resolver) extractPublicKey(data []byte) (string, error) {
 	// Try to find the attributedTo URL
 	actorURL := gjson.GetBytes(data, "attributedTo").String()

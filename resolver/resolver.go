@@ -201,12 +201,12 @@ func (r *Resolver) resolveCanonicalActivityPub(objectURL string, depth int) (str
 		return "", fmt.Errorf("too many canonical redirects (possible loop)")
 	}
 	fmt.Printf("Fetching ActivityPub object for canonical resolution: %s\n", objectURL)
-	jsonData, err := r.fetchActivityPubObjectRaw(objectURL)
+	raw, err := r.fetchActivityPubObjectRaw(objectURL)
 	if err != nil {
 		return "", err
 	}
 	var data map[string]interface{}
-	if err := json.Unmarshal(jsonData, &data); err != nil {
+	if err := json.Unmarshal(raw, &data); err != nil {
 		return "", fmt.Errorf("error parsing ActivityPub JSON: %v", err)
 	}
 	idVal, ok := data["id"].(string)
@@ -215,7 +215,7 @@ func (r *Resolver) resolveCanonicalActivityPub(objectURL string, depth int) (str
 		return r.resolveCanonicalActivityPub(idVal, depth+1)
 	}
 	// If no id or already canonical, format and return using helpers.go
-	formatted, err := formatResult(jsonData)
+	formatted, err := formatResult(raw)
 	if err != nil {
 		return "", fmt.Errorf("error formatting ActivityPub object: %v", err)
 	}

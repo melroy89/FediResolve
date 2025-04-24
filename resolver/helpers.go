@@ -33,21 +33,31 @@ func (r *Resolver) fetchActivityPubObjectWithSignature(objectURL string) ([]byte
 		return nil, nil, err
 	}
 
+	var keyID string
 	actorURL, ok := data["attributedTo"].(string)
 	if !ok || actorURL == "" {
-		return nil, nil, fmt.Errorf("could not find attributedTo in object")
-	}
-
-	// Fetch actor data
-	_, actorData, err := r.fetchActorData(actorURL)
-	if err != nil {
-		return nil, nil, fmt.Errorf("could not fetch actor data: %v", err)
-	}
-
-	// Extract the public key ID
-	keyID, _, err := r.extractPublicKey(actorData)
-	if err != nil {
-		return nil, nil, fmt.Errorf("could not extract public key: %v", err)
+		fmt.Printf("Could not find attributedTo in object\n")
+		// Try to find key in the object itself
+		// Try to catch an error
+		if _, ok := data["publicKey"].(map[string]interface{}); !ok {
+			return nil, nil, fmt.Errorf("could not find public key in object")
+		}
+		if _, ok := data["publicKey"].(map[string]interface{})["id"]; !ok {
+			return nil, nil, fmt.Errorf("could not find public key ID in object")
+		}
+		keyID = data["publicKey"].(map[string]interface{})["id"].(string)
+	} else {
+		// Fetch actor data
+		_, actorData, err := r.fetchActorData(actorURL)
+		if err != nil {
+			return nil, nil, fmt.Errorf("could not fetch actor data: %v", err)
+		}
+		// Extract the public key ID
+		key, _, err := r.extractPublicKey(actorData)
+		if err != nil {
+			return nil, nil, fmt.Errorf("could not extract public key: %v", err)
+		}
+		keyID = key
 	}
 
 	// Create a new private key for signing (in a real app, we would use a persistent key)

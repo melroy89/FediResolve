@@ -85,13 +85,29 @@ func nodeInfoSummary(jsonStr string) string {
 	cyan := color.New(color.FgCyan).SprintFunc()
 	green := color.New(color.FgGreen).SprintFunc()
 	yellow := color.New(color.FgYellow).SprintFunc()
+	red := color.New(color.FgRed).SprintFunc()
 
 	parts := []string{}
 	parts = append(parts, fmt.Sprintf("%s: %s", bold("NodeInfo Version"), cyan(gjson.Get(jsonStr, "version").String())))
 	parts = append(parts, fmt.Sprintf("%s: %s %s", bold("Software"), green(gjson.Get(jsonStr, "software.name").String()), yellow(gjson.Get(jsonStr, "software.version").String())))
 	if repo := gjson.Get(jsonStr, "software.repository").String(); repo != "" {
-		parts = append(parts, fmt.Sprintf("%s: %s", bold("Repository"), repo))
+		parts = append(parts, fmt.Sprintf("%s: %s", bold("Repository"), green(repo)))
 	}
+
+	// Color openRegistrations green if true, red if false
+	openReg := gjson.Get(jsonStr, "openRegistrations")
+	openRegStr := openReg.String()
+	var openRegColored string
+	if openReg.Exists() {
+		if openReg.Bool() {
+			openRegColored = green(openRegStr)
+		} else {
+			openRegColored = red(openRegStr)
+		}
+	} else {
+		openRegColored = openRegStr
+	}
+	parts = append(parts, fmt.Sprintf("%s: %s", bold("Open Registrations"), openRegColored))
 	if protocols := gjson.Get(jsonStr, "protocols").Array(); len(protocols) > 0 {
 		var plist []string
 		for _, p := range protocols {
@@ -109,9 +125,6 @@ func nodeInfoSummary(jsonStr string) string {
 	}
 	if comments := gjson.Get(jsonStr, "usage.localComments").Int(); comments > 0 {
 		parts = append(parts, fmt.Sprintf("%s: %d", bold("Local Comments"), comments))
-	}
-	if open := gjson.Get(jsonStr, "openRegistrations").Exists(); open {
-		parts = append(parts, fmt.Sprintf("%s: %v", bold("Open Registrations"), gjson.Get(jsonStr, "openRegistrations").Bool()))
 	}
 	if nodeName := gjson.Get(jsonStr, "metadata.nodeName").String(); nodeName != "" {
 		parts = append(parts, fmt.Sprintf("%s: %s", bold("Node Name"), cyan(nodeName)))

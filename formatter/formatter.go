@@ -38,6 +38,7 @@ func createSummary(jsonStr string) string {
 	cyan := color.New(color.FgCyan).SprintFunc()
 	green := color.New(color.FgGreen).SprintFunc()
 	yellow := color.New(color.FgYellow).SprintFunc()
+	red := color.New(color.FgRed).SprintFunc()
 	
 	header := fmt.Sprintf("%s: %s\n", bold("Type"), cyan(objectType))
 	
@@ -47,13 +48,13 @@ func createSummary(jsonStr string) string {
 	
 	// Add ID if available
 	if id := gjson.Get(jsonStr, "id").String(); id != "" {
-		summaryParts = append(summaryParts, fmt.Sprintf("%s: %s", bold("ID"), id))
+		summaryParts = append(summaryParts, fmt.Sprintf("%s: %s", bold("ID"), green(id)))
 	}
 	
 	// Process based on type
 	switch objectType {
 	case "Person", "Application", "Group", "Organization", "Service":
-		summaryParts = formatActor(jsonStr, summaryParts, bold, green)
+		summaryParts = formatActor(jsonStr, summaryParts, bold, cyan, green, red, yellow)
 	case "Note", "Article", "Page", "Question":
 		summaryParts = formatContent(jsonStr, summaryParts, bold, green)
 	case "Create", "Update", "Delete", "Follow", "Add", "Remove", "Like", "Block", "Announce":
@@ -72,17 +73,17 @@ func createSummary(jsonStr string) string {
 }
 
 // formatActor formats actor-type objects (Person, Service, etc.)
-func formatActor(jsonStr string, parts []string, bold, green func(a ...interface{}) string) []string {
+func formatActor(jsonStr string, parts []string, bold, cyan, green, red, yellow func(a ...interface{}) string) []string {
 	if name := gjson.Get(jsonStr, "name").String(); name != "" {
-		parts = append(parts, fmt.Sprintf("%s: %s", bold("Name"), name))
+		parts = append(parts, fmt.Sprintf("%s: %s", bold("Name"), cyan(name)))
 	}
 	
 	if preferredUsername := gjson.Get(jsonStr, "preferredUsername").String(); preferredUsername != "" {
-		parts = append(parts, fmt.Sprintf("%s: %s", bold("Username"), preferredUsername))
+		parts = append(parts, fmt.Sprintf("%s: %s", bold("Username"), red(preferredUsername)))
 	}
 	
 	if url := gjson.Get(jsonStr, "url").String(); url != "" {
-		parts = append(parts, fmt.Sprintf("%s: %s", bold("URL"), url))
+		parts = append(parts, fmt.Sprintf("%s: %s", bold("URL"), green(url)))
 	}
 	
 	if summary := gjson.Get(jsonStr, "summary").String(); summary != "" {
@@ -90,15 +91,15 @@ func formatActor(jsonStr string, parts []string, bold, green func(a ...interface
 	}
 	
 	if published := gjson.Get(jsonStr, "published").String(); published != "" {
-		parts = append(parts, fmt.Sprintf("%s: %s", bold("Published"), formatDate(published)))
+		parts = append(parts, fmt.Sprintf("%s: %s", bold("Published"), yellow(formatDate(published))))
 	}
 	
 	if followers := gjson.Get(jsonStr, "followers").String(); followers != "" {
-		parts = append(parts, fmt.Sprintf("%s: %s", bold("Followers"), followers))
+		parts = append(parts, fmt.Sprintf("%s: %s", bold("Followers"), green(followers)))
 	}
 	
 	if following := gjson.Get(jsonStr, "following").String(); following != "" {
-		parts = append(parts, fmt.Sprintf("%s: %s", bold("Following"), following))
+		parts = append(parts, fmt.Sprintf("%s: %s", bold("Following"), green(following)))
 	}
 	
 	return parts

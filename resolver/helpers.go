@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"regexp"
 	"strings"
 	"time"
 
@@ -19,7 +18,8 @@ import (
 // Define common constants
 const (
 	// UserAgent is the user agent string used for all HTTP requests
-	UserAgent = "FediResolve/1.0 (https://melroy.org)"
+	UserAgent    = "FediResolve/1.0 (https://melroy.org)"
+	AcceptHeader = "application/activity+json, application/ld+json"
 )
 
 // fetchActivityPubObjectWithSignature is a helper function that always signs HTTP requests
@@ -53,7 +53,7 @@ func (r *Resolver) fetchActivityPubObjectWithSignature(objectURL string) ([]byte
 			return nil, nil, fmt.Errorf("could not fetch actor data: %v", err)
 		}
 		// Extract the public key ID
-		key, _, err := r.extractPublicKey(actorData)
+		key, err := r.extractPublicKey(actorData)
 		if err != nil {
 			return nil, nil, fmt.Errorf("could not extract public key: %v", err)
 		}
@@ -73,7 +73,7 @@ func (r *Resolver) fetchActivityPubObjectWithSignature(objectURL string) ([]byte
 	}
 
 	// Set headers
-	req.Header.Set("Accept", "application/activity+json, application/ld+json; profile=\"https://www.w3.org/ns/activitystreams\", application/json")
+	req.Header.Set("Accept", AcceptHeader)
 	req.Header.Set("User-Agent", UserAgent)
 	req.Header.Set("Date", time.Now().UTC().Format(http.TimeFormat))
 
@@ -103,12 +103,9 @@ func (r *Resolver) fetchActivityPubObjectWithSignature(objectURL string) ([]byte
 		return nil, nil, fmt.Errorf("received empty response body")
 	}
 
-	// Remove ANSI escape codes if present (some servers return colored output)
-	cleanBody := removeANSIEscapeCodes(bodyBytes)
-
 	// Try to decode the JSON response
 	var body map[string]interface{}
-	if err := json.Unmarshal(cleanBody, &body); err != nil {
+	if err := json.Unmarshal(bodyBytes, &body); err != nil {
 		return nil, nil, fmt.Errorf("error decoding signed response: %v", err)
 	}
 
@@ -135,7 +132,7 @@ func (r *Resolver) fetchActivityPubObjectDirect(objectURL string) ([]byte, map[s
 	}
 
 	// Set Accept headers to request ActivityPub data
-	req.Header.Set("Accept", "application/activity+json, application/ld+json; profile=\"https://www.w3.org/ns/activitystreams\"")
+	req.Header.Set("Accept", AcceptHeader)
 	req.Header.Set("User-Agent", UserAgent)
 
 	// Perform the request
@@ -180,12 +177,9 @@ func (r *Resolver) fetchActivityPubObjectDirect(objectURL string) ([]byte, map[s
 		return nil, nil, fmt.Errorf("received empty response body")
 	}
 
-	// Remove ANSI escape codes if present (some servers return colored output)
-	cleanBody := removeANSIEscapeCodes(bodyBytes)
-
 	// Try to decode the JSON response
 	var body map[string]interface{}
-	if err := json.Unmarshal(cleanBody, &body); err != nil {
+	if err := json.Unmarshal(bodyBytes, &body); err != nil {
 		return nil, nil, fmt.Errorf("error decoding response: %v", err)
 	}
 
@@ -203,7 +197,7 @@ func (r *Resolver) fetchActorData(actorURL string) ([]byte, map[string]interface
 	}
 
 	// Set headers
-	req.Header.Set("Accept", "application/activity+json, application/ld+json; profile=\"https://www.w3.org/ns/activitystreams\", application/json")
+	req.Header.Set("Accept", AcceptHeader)
 	req.Header.Set("User-Agent", UserAgent)
 
 	// Send the request
@@ -233,11 +227,11 @@ func (r *Resolver) fetchActorData(actorURL string) ([]byte, map[string]interface
 }
 
 // extractPublicKey extracts the public key ID from actor data
-func (r *Resolver) extractPublicKey(actorData map[string]interface{}) (string, string, error) {
+func (r *Resolver) extractPublicKey(actorData map[string]interface{}) (string, error) {
 	// Convert to JSON string for easier parsing with gjson
 	actorJSON, err := json.Marshal(actorData)
 	if err != nil {
-		return "", "", fmt.Errorf("error marshaling actor data: %v", err)
+		return "", fmt.Errorf("error marshaling actor data: %v", err)
 	}
 
 	// Extract key ID
@@ -247,14 +241,11 @@ func (r *Resolver) extractPublicKey(actorData map[string]interface{}) (string, s
 		keyID = gjson.GetBytes(actorJSON, "publicKey.0.id").String()
 	}
 	if keyID == "" {
-		return "", "", fmt.Errorf("could not find public key ID in actor data")
+		fmt.Printf("could not find public key ID in actor data")
+		return "dummy", nil
 	}
 
-	// For future implementation, we might need to parse and use the public key
-	// But for now, we just return a dummy value since we're focused on signing
-	dummyPEM := "dummy-key"
-
-	return keyID, dummyPEM, nil
+	return keyID, nil
 }
 
 // generateRSAKey generates a new RSA key pair for signing requests
@@ -291,65 +282,6 @@ func signRequest(req *http.Request, keyID string, privateKey *rsa.PrivateKey) er
 
 	// Sign the request
 	return signer.SignRequest(privateKey, keyID, req, nil)
-}
-
-// resolveActorViaWebFinger resolves an actor URL via WebFinger protocol
-func (r *Resolver) resolveActorViaWebFinger(username, domain string) (string, error) {
-	// WebFinger URL format: https://domain.tld/.well-known/webfinger?resource=acct:username@domain.tld
-	webfingerURL := fmt.Sprintf("https://%s/.well-known/webfinger?resource=acct:%s@%s",
-		domain, username, domain)
-
-	fmt.Printf("Fetching WebFinger data from: %s\n", webfingerURL)
-
-	// Create the request
-	req, err := http.NewRequest("GET", webfingerURL, nil)
-	if err != nil {
-		return "", fmt.Errorf("error creating WebFinger request: %v", err)
-	}
-
-	// Set headers
-	req.Header.Set("Accept", "application/jrd+json, application/json")
-	req.Header.Set("User-Agent", UserAgent)
-
-	// Send the request
-	resp, err := r.client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("error fetching WebFinger data: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("WebFinger request failed with status: %s", resp.Status)
-	}
-
-	// Read and parse the response
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("error reading WebFinger response: %v", err)
-	}
-
-	// Find the ActivityPub actor URL in the WebFinger response
-	actorURL := ""
-	webfingerData := gjson.ParseBytes(body)
-	links := webfingerData.Get("links").Array()
-	for _, link := range links {
-		rel := link.Get("rel").String()
-		typ := link.Get("type").String()
-		href := link.Get("href").String()
-
-		if rel == "self" && (typ == "application/activity+json" ||
-			typ == "application/ld+json; profile=\"https://www.w3.org/ns/activitystreams\"" ||
-			strings.Contains(typ, "activity+json")) {
-			actorURL = href
-			break
-		}
-	}
-
-	if actorURL == "" {
-		return "", fmt.Errorf("could not find ActivityPub actor URL in WebFinger response")
-	}
-
-	return actorURL, nil
 }
 
 // fetchNodeInfo fetches nodeinfo from the given domain, returning the raw JSON and parsed data
@@ -443,10 +375,4 @@ func formatResult(raw []byte, data map[string]interface{}) string {
 		return string(raw)
 	}
 	return formatted
-}
-
-// removeANSIEscapeCodes strips ANSI escape codes from a byte slice
-func removeANSIEscapeCodes(input []byte) []byte {
-	ansiEscape := regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
-	return ansiEscape.ReplaceAll(input, []byte{})
 }

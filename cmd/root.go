@@ -11,10 +11,11 @@ import (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "fediresolve [url]",
+	Use:   "fediresolve [url|handle]",
 	Short: "Resolve and display Fediverse content",
 	Long: `Fediresolve is a CLI tool that resolves Fediverse URLs and handles.
-It can parse and display content from Mastodon, Lemmy, and other Fediverse platforms.
+
+It can parse and display content from Mastodon, Mbin, Lemmy, and other Fediverse platforms.
 The tool supports both direct URLs to posts/comments/threads and Fediverse handles like @username@server.com.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		var input string

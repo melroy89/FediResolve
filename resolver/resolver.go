@@ -45,10 +45,7 @@ func (r *Resolver) Resolve(input string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		formatted, ferr := r.formatCanonicalResultHelper(raw, nodeinfo)
-		if ferr != nil {
-			return string(raw), nil
-		}
+		formatted := formatResult(raw, nodeinfo)
 		return formatted, nil
 	}
 
@@ -198,10 +195,10 @@ func (r *Resolver) resolveURL(inputURL string) (string, error) {
 // that differs from the requested URL, recursively fetches that canonical URL. Max depth is used to prevent infinite loops.
 func (r *Resolver) resolveCanonicalActivityPub(objectURL string, depth int) (string, error) {
 	if depth > 3 {
-		return "", fmt.Errorf("Too many canonical redirects (possible loop)")
+		return "", fmt.Errorf("too many canonical redirects (possible loop)")
 	}
 	fmt.Printf("Fetching ActivityPub object for canonical resolution: %s\n", objectURL)
-	jsonData, err := r.fetchActivityPubObjectWithSignatureRaw(objectURL)
+	jsonData, err := r.fetchActivityPubObjectRaw(objectURL)
 	if err != nil {
 		return "", err
 	}
@@ -215,48 +212,29 @@ func (r *Resolver) resolveCanonicalActivityPub(objectURL string, depth int) (str
 		return r.resolveCanonicalActivityPub(idVal, depth+1)
 	}
 	// If no id or already canonical, format and return using helpers.go
-	return r.formatCanonicalResultHelper(jsonData, data)
+	formatted := formatResult(jsonData, data)
+	return formatted, nil
 }
 
-// fetchActivityPubObjectWithSignatureRaw fetches an ActivityPub object and returns the raw JSON []byte (not formatted)
-func (r *Resolver) fetchActivityPubObjectWithSignatureRaw(objectURL string) ([]byte, error) {
-	fmt.Printf("Fetching ActivityPub object with HTTP signatures from: %s\n", objectURL)
+// fetchActivityPubObjectRaw fetches an ActivityPub object and returns the raw JSON []byte (not formatted)
+func (r *Resolver) fetchActivityPubObjectRaw(objectURL string) ([]byte, error) {
+	fmt.Printf("Fetching ActivityPub object with HTTP from: %s\n", objectURL)
 
-	actorURL, err := r.extractActorURLFromObjectURL(objectURL)
-	if err != nil {
-		return nil, fmt.Errorf("Could not extract actor URL: %v", err)
-	}
-	actorData, err := r.fetchActorData(actorURL)
-	if err != nil {
-		return nil, fmt.Errorf("Could not fetch actor data: %v", err)
-	}
-	keyID, _, err := r.extractPublicKey(actorData)
-	if err != nil {
-		return nil, fmt.Errorf("Could not extract public key: %v", err)
-	}
-	privateKey, err := generateRSAKey()
-	if err != nil {
-		return nil, fmt.Errorf("Could not generate RSA key: %v", err)
-	}
-	// Sign and send the request
 	req, err := http.NewRequest("GET", objectURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("error creating signed request: %v", err)
+		return nil, fmt.Errorf("error creating get request: %v", err)
 	}
 	req.Header.Set("Accept", "application/ld+json, application/activity+json")
 	req.Header.Set("User-Agent", UserAgent)
 	req.Header.Set("Date", time.Now().UTC().Format(http.TimeFormat))
-	if err := signRequest(req, keyID, privateKey); err != nil {
-		return nil, fmt.Errorf("Could not sign request: %v", err)
-	}
 	resp, err := r.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("error sending signed request: %v", err)
+		return nil, fmt.Errorf("error sending get request: %v", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("signed request failed with status: %s, body: %s", resp.Status, string(body))
+		return nil, fmt.Errorf("get request failed with status: %s, body: %s", resp.Status, string(body))
 	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -266,12 +244,6 @@ func (r *Resolver) fetchActivityPubObjectWithSignatureRaw(objectURL string) ([]b
 		return nil, fmt.Errorf("received empty response body")
 	}
 	return body, nil
-}
-
-// formatCanonicalResultHelper formats the ActivityPub object for display
-func (r *Resolver) formatCanonicalResultHelper(jsonData []byte, data map[string]interface{}) (string, error) {
-	// Call the new helper method from helpers.go
-	return formatCanonicalResultHelper(jsonData, data)
 }
 
 // fetchActivityPubObject fetches an ActivityPub object from a URL
@@ -291,5 +263,10 @@ func (r *Resolver) fetchActivityPubObject(objectURL string) (string, error) {
 	}
 
 	// Use our signature-first approach by default
-	return r.fetchActivityPubObjectWithSignature(objectURL)
+	raw, body, err := r.fetchActivityPubObjectWithSignature(objectURL)
+	if err != nil {
+		return "", fmt.Errorf("error fetching ActivityPub object: %v", err)
+	}
+	formatted := formatResult(raw, body)
+	return formatted, nil
 }

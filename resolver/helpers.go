@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -23,45 +24,42 @@ const (
 
 // fetchActivityPubObjectWithSignature is a helper function that always signs HTTP requests
 // This is the preferred way to fetch ActivityPub content as many instances require signatures
-func (r *Resolver) fetchActivityPubObjectWithSignature(objectURL string) (string, error) {
+func (r *Resolver) fetchActivityPubObjectWithSignature(objectURL string) ([]byte, map[string]interface{}, error) {
 	fmt.Printf("Fetching ActivityPub object with HTTP signatures from: %s\n", objectURL)
 
-	// First, we need to extract the actor URL from the object URL
-	actorURL, err := r.extractActorURLFromObjectURL(objectURL)
+	// Fetch the object itself
+	_, data, err := r.fetchActivityPubObjectDirect(objectURL)
 	if err != nil {
-		// If we can't extract the actor URL, fall back to a direct request
-		fmt.Printf("Could not extract actor URL: %v, falling back to direct request\n", err)
-		return r.fetchActivityPubObjectDirect(objectURL)
+		return nil, nil, err
 	}
 
-	// Then, we need to fetch the actor data to get the public key
-	actorData, err := r.fetchActorData(actorURL)
+	actorURL, ok := data["attributedTo"].(string)
+	if !ok || actorURL == "" {
+		return nil, nil, fmt.Errorf("could not find attributedTo in object")
+	}
+
+	// Fetch actor data
+	_, actorData, err := r.fetchActorData(actorURL)
 	if err != nil {
-		// If we can't fetch the actor data, fall back to a direct request
-		fmt.Printf("Could not fetch actor data: %v, falling back to direct request\n", err)
-		return r.fetchActivityPubObjectDirect(objectURL)
+		return nil, nil, fmt.Errorf("could not fetch actor data: %v", err)
 	}
 
 	// Extract the public key ID
 	keyID, _, err := r.extractPublicKey(actorData)
 	if err != nil {
-		// If we can't extract the public key, fall back to a direct request
-		fmt.Printf("Could not extract public key: %v, falling back to direct request\n", err)
-		return r.fetchActivityPubObjectDirect(objectURL)
+		return nil, nil, fmt.Errorf("could not extract public key: %v", err)
 	}
 
 	// Create a new private key for signing (in a real app, we would use a persistent key)
 	privateKey, err := generateRSAKey()
 	if err != nil {
-		// If we can't generate a key, fall back to a direct request
-		fmt.Printf("Could not generate RSA key: %v, falling back to direct request\n", err)
-		return r.fetchActivityPubObjectDirect(objectURL)
+		return nil, nil, fmt.Errorf("could not generate RSA key: %v", err)
 	}
 
 	// Now, sign and send the request
 	req, err := http.NewRequest("GET", objectURL, nil)
 	if err != nil {
-		return "", fmt.Errorf("error creating signed request: %v", err)
+		return nil, nil, fmt.Errorf("error creating signed request: %v", err)
 	}
 
 	// Set headers
@@ -71,59 +69,45 @@ func (r *Resolver) fetchActivityPubObjectWithSignature(objectURL string) (string
 
 	// Sign the request
 	if err := signRequest(req, keyID, privateKey); err != nil {
-		// If we can't sign the request, fall back to a direct request
-		fmt.Printf("Could not sign request: %v, falling back to direct request\n", err)
-		return r.fetchActivityPubObjectDirect(objectURL)
+		return nil, nil, fmt.Errorf("could not sign request: %v", err)
 	}
 
 	// Send the request
 	fmt.Printf("Sending signed request with headers: %v\n", req.Header)
 	resp, err := r.client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("error sending signed request: %v", err)
+		return nil, nil, fmt.Errorf("error sending signed request: %v", err)
 	}
 	defer resp.Body.Close()
 
-	fmt.Printf("Received response with status: %s\n", resp.Status)
 	if resp.StatusCode != http.StatusOK {
-		// If the signed request fails, try a direct request as a fallback
-		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-			fmt.Println("Signed request failed with auth error, trying direct request as fallback")
-			return r.fetchActivityPubObjectDirect(objectURL)
-		}
-
-		// Read body for error info
 		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("signed request failed with status: %s, body: %s", resp.Status, string(body))
+		return nil, nil, fmt.Errorf("signed request failed with status: %s, body: %s", resp.Status, string(body))
 	}
 
-	// Read and parse the response
-	body, err := io.ReadAll(resp.Body)
+	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("error reading response: %v", err)
+		return nil, nil, fmt.Errorf("error reading response: %v", err)
+	}
+	if len(bodyBytes) == 0 {
+		return nil, nil, fmt.Errorf("received empty response body")
 	}
 
-	// Debug output
-	fmt.Printf("Response content type: %s\n", resp.Header.Get("Content-Type"))
-
-	// Check if the response is empty
-	if len(body) == 0 {
-		return "", fmt.Errorf("received empty response body")
-	}
+	// Remove ANSI escape codes if present (some servers return colored output)
+	cleanBody := removeANSIEscapeCodes(bodyBytes)
 
 	// Try to decode the JSON response
-	var data map[string]interface{}
-	if err := json.Unmarshal(body, &data); err != nil {
-		return "", fmt.Errorf("error decoding response: %v", err)
+	var body map[string]interface{}
+	if err := json.Unmarshal(cleanBody, &body); err != nil {
+		return nil, nil, fmt.Errorf("error decoding signed response: %v", err)
 	}
 
-	// Format the result
-	return formatter.Format(data)
+	return bodyBytes, body, nil
 }
 
 // fetchActivityPubObjectDirect is a helper function to fetch content without signatures
 // This is used as a fallback when signing fails
-func (r *Resolver) fetchActivityPubObjectDirect(objectURL string) (string, error) {
+func (r *Resolver) fetchActivityPubObjectDirect(objectURL string) ([]byte, map[string]interface{}, error) {
 	fmt.Printf("Fetching ActivityPub object directly from: %s\n", objectURL)
 
 	// Create a custom client that doesn't follow redirects automatically
@@ -137,18 +121,18 @@ func (r *Resolver) fetchActivityPubObjectDirect(objectURL string) (string, error
 	// Create the request
 	req, err := http.NewRequest("GET", objectURL, nil)
 	if err != nil {
-		return "", fmt.Errorf("error creating request: %v", err)
+		return nil, nil, fmt.Errorf("error creating request: %v", err)
 	}
 
 	// Set Accept headers to request ActivityPub data
-	req.Header.Set("Accept", "application/activity+json, application/ld+json; profile=\"https://www.w3.org/ns/activitystreams\", application/json")
+	req.Header.Set("Accept", "application/activity+json, application/ld+json; profile=\"https://www.w3.org/ns/activitystreams\"")
 	req.Header.Set("User-Agent", UserAgent)
 
 	// Perform the request
 	fmt.Printf("Sending direct request with headers: %v\n", req.Header)
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("error fetching content: %v", err)
+		return nil, nil, fmt.Errorf("error fetching content: %v", err)
 	}
 	defer resp.Body.Close()
 
@@ -169,109 +153,43 @@ func (r *Resolver) fetchActivityPubObjectDirect(objectURL string) (string, error
 	if resp.StatusCode != http.StatusOK {
 		// Read body for error info
 		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("request failed with status: %s, body: %s", resp.Status, string(body))
+		return nil, nil, fmt.Errorf("request failed with status: %s, body: %s", resp.Status, string(body))
 	}
 
 	// Read and parse the response
-	body, err := io.ReadAll(resp.Body)
+	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("error reading response: %v", err)
+		return nil, nil, fmt.Errorf("error reading response: %v", err)
 	}
 
 	// Debug output
 	fmt.Printf("Response content type: %s\n", resp.Header.Get("Content-Type"))
 
 	// Check if the response is empty
-	if len(body) == 0 {
-		return "", fmt.Errorf("received empty response body")
+	if len(bodyBytes) == 0 {
+		return nil, nil, fmt.Errorf("received empty response body")
 	}
+
+	// Remove ANSI escape codes if present (some servers return colored output)
+	cleanBody := removeANSIEscapeCodes(bodyBytes)
 
 	// Try to decode the JSON response
-	var data map[string]interface{}
-	if err := json.Unmarshal(body, &data); err != nil {
-		return "", fmt.Errorf("error decoding response: %v", err)
+	var body map[string]interface{}
+	if err := json.Unmarshal(cleanBody, &body); err != nil {
+		return nil, nil, fmt.Errorf("error decoding response: %v", err)
 	}
 
-	// Format the result
-	return formatter.Format(data)
-}
-
-// extractActorURLFromObjectURL extracts the actor URL from an object URL
-func (r *Resolver) extractActorURLFromObjectURL(objectURL string) (string, error) {
-	// This is a simplified approach - in a real app, we would parse the object URL properly
-	// For now, we'll assume the actor URL is the base domain with the username
-
-	// Basic URL pattern: https://domain.tld/@username/postid
-	parts := strings.Split(objectURL, "/")
-	if len(parts) < 4 {
-		return "", fmt.Errorf("invalid object URL format: %s", objectURL)
-	}
-
-	// Extract domain and username
-	domain := parts[2]
-	username := parts[3]
-
-	// Handle different URL formats
-	if strings.HasPrefix(username, "@") {
-		// Format: https://domain.tld/@username/postid
-		username = strings.TrimPrefix(username, "@")
-
-		// Check for cross-instance handles like @user@domain.tld
-		if strings.Contains(username, "@") {
-			userParts := strings.Split(username, "@")
-			if len(userParts) == 2 {
-				username = userParts[0]
-				domain = userParts[1]
-			}
-		}
-
-		// Try common URL patterns
-		actorURLs := []string{
-			fmt.Sprintf("https://%s/users/%s", domain, username),
-			fmt.Sprintf("https://%s/@%s", domain, username),
-			fmt.Sprintf("https://%s/user/%s", domain, username),
-			fmt.Sprintf("https://%s/accounts/%s", domain, username),
-			fmt.Sprintf("https://%s/profile/%s", domain, username),
-		}
-
-		// Try each URL pattern
-		for _, actorURL := range actorURLs {
-			fmt.Printf("Trying potential actor URL: %s\n", actorURL)
-			// Check if this URL returns a valid actor
-			actorData, err := r.fetchActorData(actorURL)
-			if err == nil && actorData != nil {
-				return actorURL, nil
-			}
-
-			// Add a small delay between requests to avoid rate limiting
-			fmt.Println("Waiting 1 second before trying next actor URL...")
-			time.Sleep(1 * time.Second)
-		}
-
-		// If we couldn't find a valid actor URL, try WebFinger
-		fmt.Printf("Trying WebFinger resolution for: %s@%s\n", username, domain)
-		return r.resolveActorViaWebFinger(username, domain)
-	} else if username == "users" || username == "user" || username == "accounts" || username == "profile" {
-		// Format: https://domain.tld/users/username/postid
-		if len(parts) < 5 {
-			return "", fmt.Errorf("invalid user URL format: %s", objectURL)
-		}
-		actorURL := fmt.Sprintf("https://%s/%s/%s", domain, username, parts[4])
-		return actorURL, nil
-	}
-
-	// If we get here, we couldn't determine the actor URL
-	return "", fmt.Errorf("could not determine actor URL from: %s", objectURL)
+	return bodyBytes, body, nil
 }
 
 // fetchActorData fetches actor data from an actor URL
-func (r *Resolver) fetchActorData(actorURL string) (map[string]interface{}, error) {
+func (r *Resolver) fetchActorData(actorURL string) ([]byte, map[string]interface{}, error) {
 	fmt.Printf("Fetching actor data from: %s\n", actorURL)
 
 	// Create the request
 	req, err := http.NewRequest("GET", actorURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("error creating request: %v", err)
+		return nil, nil, fmt.Errorf("error creating request: %v", err)
 	}
 
 	// Set headers
@@ -281,27 +199,27 @@ func (r *Resolver) fetchActorData(actorURL string) (map[string]interface{}, erro
 	// Send the request
 	resp, err := r.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("error fetching actor data: %v", err)
+		return nil, nil, fmt.Errorf("error fetching actor data: %v", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("actor request failed with status: %s", resp.Status)
+		return nil, nil, fmt.Errorf("actor request failed with status: %s", resp.Status)
 	}
 
 	// Read and parse the response
-	body, err := io.ReadAll(resp.Body)
+	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("error reading actor response: %v", err)
+		return nil, nil, fmt.Errorf("error reading actor response: %v", err)
 	}
 
 	// Parse JSON
 	var data map[string]interface{}
-	if err := json.Unmarshal(body, &data); err != nil {
-		return nil, fmt.Errorf("error parsing actor data: %v", err)
+	if err := json.Unmarshal(bodyBytes, &data); err != nil {
+		return nil, nil, fmt.Errorf("error parsing actor data: %v", err)
 	}
 
-	return data, nil
+	return bodyBytes, data, nil
 }
 
 // extractPublicKey extracts the public key ID from actor data
@@ -490,14 +408,6 @@ func (r *Resolver) fetchNodeInfo(domain string) ([]byte, map[string]interface{},
 
 // Try to extract actor, else try nodeinfo fallback for top-level domains
 func (r *Resolver) ResolveObjectOrNodeInfo(objectURL string) ([]byte, map[string]interface{}, string, error) {
-	actorURL, err := r.extractActorURLFromObjectURL(objectURL)
-	if err == nil && actorURL != "" {
-		actorData, err := r.fetchActorData(actorURL)
-		if err == nil && actorData != nil {
-			jsonData, _ := json.MarshalIndent(actorData, "", "  ")
-			return jsonData, actorData, "actor", nil
-		}
-	}
 	// If actor resolution fails, try nodeinfo
 	parts := strings.Split(objectURL, "/")
 	if len(parts) < 3 {
@@ -516,7 +426,17 @@ func FormatHelperResult(raw []byte, nodeinfo map[string]interface{}) (string, er
 	return formatter.Format(nodeinfo)
 }
 
-// formatCanonicalResultHelper is used by resolver.go to format ActivityPub objects without importing formatter there
-func formatCanonicalResultHelper(jsonData []byte, data map[string]interface{}) (string, error) {
-	return formatter.Format(data)
+// Try to always format (ideally the body data, or in the worse case the raw data to string)
+func formatResult(raw []byte, data map[string]interface{}) string {
+	formatted, err := formatter.Format(data)
+	if err != nil {
+		return string(raw)
+	}
+	return formatted
+}
+
+// removeANSIEscapeCodes strips ANSI escape codes from a byte slice
+func removeANSIEscapeCodes(input []byte) []byte {
+	ansiEscape := regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+	return ansiEscape.ReplaceAll(input, []byte{})
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/tidwall/gjson"
 	markdown "github.com/vlanse/go-term-markdown"
+	h2m "github.com/JohannesKaufmann/html-to-markdown"
 )
 
 // Format takes ActivityPub data and returns a formatted string representation
@@ -362,24 +363,12 @@ func renderMarkdown(md string) string {
 
 // Replace stripHTML with htmlToMarkdown
 func htmlToMarkdown(html string) string {
-	// For now, a basic replacement (optionally, use a library for better conversion)
-	html = strings.ReplaceAll(html, "<br>", "\n")
-	html = strings.ReplaceAll(html, "<br/>", "\n")
-	html = strings.ReplaceAll(html, "<p>", "\n")
-	html = strings.ReplaceAll(html, "</p>", "\n")
-	// Remove all other tags
-	for {
-		startIdx := strings.Index(html, "<")
-		if startIdx == -1 {
-			break
-		}
-		endIdx := strings.Index(html[startIdx:], ">")
-		if endIdx == -1 {
-			break
-		}
-		html = html[:startIdx] + html[startIdx+endIdx+1:]
+	converter := h2m.NewConverter("", true, nil)
+	md, err := converter.ConvertString(html)
+	if err != nil {
+		return html // fallback to original HTML if conversion fails
 	}
-	return html
+	return md
 }
 
 // formatDate formats an ISO 8601 date string to a more readable format

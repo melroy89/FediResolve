@@ -6,11 +6,11 @@ toolchain go1.24.1
 
 require (
 	github.com/JohannesKaufmann/html-to-markdown v1.6.0
+	github.com/Klaus-Tockloth/go-term-markdown v0.0.0-20250129073703-91600624167c
 	github.com/fatih/color v1.18.0
 	github.com/go-fed/httpsig v1.1.0
 	github.com/spf13/cobra v1.9.1
 	github.com/tidwall/gjson v1.18.0
-	github.com/vlanse/go-term-markdown v0.0.1-dev2
 )
 
 require (

@@ -7,9 +7,9 @@ import (
 	"time"
 
 	h2m "github.com/JohannesKaufmann/html-to-markdown"
+	markdown "github.com/Klaus-Tockloth/go-term-markdown"
 	"github.com/fatih/color"
 	"github.com/tidwall/gjson"
-	markdown "github.com/vlanse/go-term-markdown"
 )
 
 // Format takes ActivityPub data and returns a formatted string representation

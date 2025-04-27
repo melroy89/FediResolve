@@ -34,9 +34,13 @@ cd fediresolve
 go build
 ```
 
-Optionally, install the binary by executing: `go install`
+Optionally, install the binary by executing: 
 
-Which depending on the OS installs to the installation directory, under Linux that is: `$HOME/go/bin`.  
+```bash
+go install
+```
+
+Which depending on the OS installs to the installation directory, under Linux that would be: `$HOME/go/bin`.  
 Be sure to add `$HOME/go/bin` path to your `$PATH` in your shell, [more info](https://go.dev/doc/tutorial/compile-install).
 
 Once installed (assuming the `$HOME/go/bin` path is in your `$PATH`) you can just execute the `fediresolve` binary without `./` of course.
